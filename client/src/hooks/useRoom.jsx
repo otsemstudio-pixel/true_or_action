@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { getSocket } from '../lib/socket.js';
 import { useAuth } from './useAuth.jsx';
 
@@ -54,10 +54,25 @@ function emitWithAck(event, payload) {
 export function RoomProvider({ children }) {
   const { status: authStatus } = useAuth();
   const [room, setRoom] = useState(initialState);
+  const roomCodeRef = useRef(null);
+
+  useEffect(() => {
+    roomCodeRef.current = room.code;
+  }, [room.code]);
 
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return undefined;
+
+    // Le transport peut se reconnecter à tout moment (3G instable) ; si on était
+    // dans un salon, on redemande aussitôt un snapshot complet au lieu d'attendre
+    // une action de l'utilisateur.
+    function onConnect() {
+      if (!roomCodeRef.current) return;
+      emitWithAck('room:rejoin', { code: roomCodeRef.current })
+        .then((res) => setRoom(snapshotToState(res.snapshot)))
+        .catch(() => setRoom(initialState));
+    }
 
     function onPlayers({ players, hostId }) {
       setRoom((prev) => (prev.status === 'idle' ? prev : { ...prev, players, hostId }));
@@ -135,6 +150,7 @@ export function RoomProvider({ children }) {
       setRoom((prev) => ({ ...prev, messages: [...prev.messages, message].slice(-200) }));
     }
 
+    socket.on('connect', onConnect);
     socket.on('room:players', onPlayers);
     socket.on('room:settings', onSettings);
     socket.on('game:started', onGameStarted);
@@ -146,6 +162,7 @@ export function RoomProvider({ children }) {
     socket.on('chat:new', onChatNew);
 
     return () => {
+      socket.off('connect', onConnect);
       socket.off('room:players', onPlayers);
       socket.off('room:settings', onSettings);
       socket.off('game:started', onGameStarted);
