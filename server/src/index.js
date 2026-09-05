@@ -5,6 +5,7 @@ import { Server } from 'socket.io';
 import { env } from './config/env.js';
 import { pool } from './db/pool.js';
 import { registerSocketHandlers } from './sockets/index.js';
+import authRouter from './routes/auth.js';
 
 const app = express();
 
@@ -19,6 +20,16 @@ app.get('/health', async (req, res) => {
     console.error('Healthcheck DB échoué:', err.code || err.name || 'erreur inconnue');
     res.status(503).json({ status: 'degraded', db: 'error' });
   }
+});
+
+app.use('/api/auth', authRouter);
+
+app.use((err, req, res, next) => {
+  if (err.name === 'AuthError') {
+    return res.status(err.status || 400).json({ code: err.code, message: err.message });
+  }
+  console.error('Erreur HTTP inattendue:', err.code || err.name || 'erreur inconnue');
+  res.status(500).json({ code: 'INTERNAL_ERROR', message: 'Erreur interne' });
 });
 
 const httpServer = createServer(app);

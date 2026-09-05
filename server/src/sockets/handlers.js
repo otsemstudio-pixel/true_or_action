@@ -21,6 +21,7 @@ import { generateRoomCode, createRoomEntry, getEntry, setEntry, deleteEntry } fr
 import { setTimer, clearTimer, clearAllTimers, setGraceTimer, clearGraceTimer } from './timers.js';
 import { fetchQuestionBank } from './questions.js';
 import { buildSnapshot } from './snapshot.js';
+import { verifyToken } from '../auth/token.js';
 
 function errorResponse(err, extra = {}) {
   if (err instanceof GameError) {
@@ -126,13 +127,18 @@ function cleanupIfEmpty(entry, code) {
 
 export function registerSocketHandlers(io) {
   io.use((socket, next) => {
-    const { playerId, pseudo } = socket.handshake.auth ?? {};
-    if (typeof playerId !== 'string' || !playerId || typeof pseudo !== 'string' || !pseudo.trim()) {
+    const { token } = socket.handshake.auth ?? {};
+    if (typeof token !== 'string' || !token) {
       return next(new Error('AUTH_REQUIRED'));
     }
-    socket.data.playerId = playerId;
-    socket.data.pseudo = pseudo.trim().slice(0, 30);
-    next();
+    try {
+      const { id, pseudo } = verifyToken(token);
+      socket.data.playerId = String(id);
+      socket.data.pseudo = pseudo;
+      next();
+    } catch {
+      next(new Error('INVALID_TOKEN'));
+    }
   });
 
   io.on('connection', (socket) => {
