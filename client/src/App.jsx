@@ -5,6 +5,7 @@ import Spinner from './components/Spinner.jsx';
 import AccueilScreen from './screens/AccueilScreen.jsx';
 import MenuScreen from './screens/MenuScreen.jsx';
 import SalonAttenteScreen from './screens/SalonAttenteScreen.jsx';
+import PartieScreen from './screens/PartieScreen.jsx';
 
 function App() {
   const { status } = useAuth();
@@ -28,11 +29,7 @@ function App() {
       <ConnectionBadge />
       {room.status === 'idle' && <MenuScreen />}
       {room.status === 'waiting' && <SalonAttenteScreen />}
-      {room.status === 'playing' && (
-        <div className="screen screen--centered">
-          <p>La partie a commencé — écran de jeu à venir.</p>
-        </div>
-      )}
+      {room.status === 'playing' && <PartieScreen />}
       {room.status === 'finished' && (
         <div className="screen screen--centered">
           <p>Partie terminée — écran de classement à venir.</p>

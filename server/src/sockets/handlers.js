@@ -58,6 +58,7 @@ function applyGameEffects(io, entry, effects) {
           type: effect.questionType,
           questionId: effect.questionId,
           contenu: entry.questionsById.get(effect.questionId) ?? null,
+          answerDeadline: Date.now() + TIMERS.answerMs,
         });
         break;
       case 'ANSWER_SUBMITTED':
@@ -65,6 +66,7 @@ function applyGameEffects(io, entry, effects) {
           turnNumber: effect.turnNumber,
           playerId: effect.playerId,
           answer: effect.answer,
+          voteDeadline: Date.now() + TIMERS.voteMs,
         });
         break;
       case 'VOTE_SUBMITTED':

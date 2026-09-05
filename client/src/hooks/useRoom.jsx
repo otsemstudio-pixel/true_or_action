@@ -13,6 +13,8 @@ const initialState = {
   turnNumber: 0,
   currentTurn: null,
   messages: [],
+  lastResult: null,
+  ranking: null,
 };
 
 function snapshotToState(snapshot) {
@@ -66,15 +68,93 @@ export function RoomProvider({ children }) {
     function onGameStarted({ snapshot }) {
       setRoom(snapshotToState(snapshot));
     }
+    function onTurnStarted(payload) {
+      setRoom((prev) => ({
+        ...prev,
+        turnNumber: payload.turnNumber,
+        currentTurn: {
+          turnNumber: payload.turnNumber,
+          activePlayerId: payload.activePlayerId,
+          type: payload.type,
+          questionId: payload.questionId,
+          contenu: payload.contenu,
+          phase: 'answering',
+          answer: null,
+          votes: {},
+          answerDeadline: payload.answerDeadline,
+          voteDeadline: null,
+        },
+      }));
+    }
+    function onTurnAnswered(payload) {
+      setRoom((prev) => {
+        if (!prev.currentTurn || prev.currentTurn.turnNumber !== payload.turnNumber) return prev;
+        return {
+          ...prev,
+          currentTurn: {
+            ...prev.currentTurn,
+            phase: 'voting',
+            answer: payload.answer,
+            voteDeadline: payload.voteDeadline,
+          },
+        };
+      });
+    }
+    function onTurnVoted(payload) {
+      setRoom((prev) => {
+        if (!prev.currentTurn || prev.currentTurn.turnNumber !== payload.turnNumber) return prev;
+        return {
+          ...prev,
+          currentTurn: {
+            ...prev.currentTurn,
+            votes: { ...prev.currentTurn.votes, [payload.voterId]: true },
+          },
+        };
+      });
+    }
+    function onTurnResolved(payload) {
+      setRoom((prev) => ({
+        ...prev,
+        players: payload.players,
+        lastResult: {
+          turnNumber: payload.turnNumber,
+          playerId: payload.playerId,
+          points: payload.points,
+          votes: payload.votes,
+        },
+        currentTurn:
+          prev.currentTurn && prev.currentTurn.turnNumber === payload.turnNumber
+            ? { ...prev.currentTurn, phase: 'resolved' }
+            : prev.currentTurn,
+      }));
+    }
+    function onGameEnded(payload) {
+      setRoom((prev) => ({ ...prev, status: 'finished', ranking: payload.ranking, currentTurn: null }));
+    }
+    function onChatNew(message) {
+      setRoom((prev) => ({ ...prev, messages: [...prev.messages, message].slice(-200) }));
+    }
 
     socket.on('room:players', onPlayers);
     socket.on('room:settings', onSettings);
     socket.on('game:started', onGameStarted);
+    socket.on('turn:started', onTurnStarted);
+    socket.on('turn:answered', onTurnAnswered);
+    socket.on('turn:voted', onTurnVoted);
+    socket.on('turn:resolved', onTurnResolved);
+    socket.on('game:ended', onGameEnded);
+    socket.on('chat:new', onChatNew);
 
     return () => {
       socket.off('room:players', onPlayers);
       socket.off('room:settings', onSettings);
       socket.off('game:started', onGameStarted);
+      socket.off('turn:started', onTurnStarted);
+      socket.off('turn:answered', onTurnAnswered);
+      socket.off('turn:voted', onTurnVoted);
+      socket.off('turn:resolved', onTurnResolved);
+      socket.off('game:ended', onGameEnded);
+      socket.off('chat:new', onChatNew);
     };
   }, [authStatus]);
 
@@ -106,9 +186,25 @@ export function RoomProvider({ children }) {
 
   const startGame = useCallback(() => emitWithAck('game:start', {}), []);
 
+  const sendAnswer = useCallback((text) => emitWithAck('turn:answer', { text }), []);
+
+  const sendVote = useCallback((vote) => emitWithAck('turn:vote', { vote }), []);
+
+  const sendChat = useCallback((text, clientId) => emitWithAck('chat:send', { text, clientId }), []);
+
   return (
     <RoomContext.Provider
-      value={{ room, createRoom, joinRoom, leaveRoom, updateRoomSettings, startGame }}
+      value={{
+        room,
+        createRoom,
+        joinRoom,
+        leaveRoom,
+        updateRoomSettings,
+        startGame,
+        sendAnswer,
+        sendVote,
+        sendChat,
+      }}
     >
       {children}
     </RoomContext.Provider>
