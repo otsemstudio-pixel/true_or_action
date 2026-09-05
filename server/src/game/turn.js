@@ -12,21 +12,23 @@ export function startGame(room, { questionPool, rng = defaultRng }) {
   }
 
   const { maxTurns } = room.settings;
-  const available = {
-    verite: questionPool?.verite?.length ?? 0,
-    action: questionPool?.action?.length ?? 0,
-  };
-  const missing = {
-    verite: Math.max(0, maxTurns - available.verite),
-    action: Math.max(0, maxTurns - available.action),
-  };
+  if (maxTurns !== null) {
+    const available = {
+      verite: questionPool?.verite?.length ?? 0,
+      action: questionPool?.action?.length ?? 0,
+    };
+    const missing = {
+      verite: Math.max(0, maxTurns - available.verite),
+      action: Math.max(0, maxTurns - available.action),
+    };
 
-  if (missing.verite > 0 || missing.action > 0) {
-    throw new GameError(
-      'NOT_ENOUGH_QUESTIONS',
-      `Questions insuffisantes pour ${maxTurns} tours : il manque ${missing.verite} vérité et ${missing.action} action`,
-      { missing }
-    );
+    if (missing.verite > 0 || missing.action > 0) {
+      throw new GameError(
+        'NOT_ENOUGH_QUESTIONS',
+        `Questions insuffisantes pour ${maxTurns} tours : il manque ${missing.verite} vérité et ${missing.action} action`,
+        { missing }
+      );
+    }
   }
 
   const startedRoom = {
@@ -107,7 +109,7 @@ export function submitVote(room, { voterId, vote, turnNumber, rng = defaultRng }
   const effects = [{ type: 'VOTE_SUBMITTED', turnNumber, voterId, vote }];
 
   const eligibleVoters = room.players.filter(
-    (p) => p.id !== room.currentTurn.activePlayerId && p.status !== 'excluded'
+    (p) => p.id !== room.currentTurn.activePlayerId && p.status !== 'left'
   );
   const allVoted = eligibleVoters.every((p) => Boolean(room2.currentTurn.votes[p.id]));
 
@@ -147,6 +149,9 @@ function drawType(rng) {
 
 function drawQuestion(pool, type, rng) {
   const list = pool[type];
+  if (list.length === 0) {
+    throw new GameError('NO_QUESTIONS_LEFT', `Plus de question de type ${type} disponible`);
+  }
   const index = Math.floor(rng() * list.length);
   const questionId = list[index];
   const nextList = [...list.slice(0, index), ...list.slice(index + 1)];
@@ -235,11 +240,9 @@ function resolveTurn(room, rng) {
 }
 
 function checkGameEnd(room) {
-  if (room.turnNumber >= room.settings.maxTurns) return 'maxTurns';
-  if (room.settings.targetScore !== null) {
-    const reached = room.players.some((p) => p.score >= room.settings.targetScore);
-    if (reached) return 'targetScore';
-  }
+  const { maxTurns, targetScore } = room.settings;
+  if (maxTurns !== null && room.turnNumber >= maxTurns) return 'maxTurns';
+  if (targetScore !== null && room.players.some((p) => p.score >= targetScore)) return 'targetScore';
   return null;
 }
 

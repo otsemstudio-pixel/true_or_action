@@ -185,6 +185,34 @@ describe('règles de réponse', () => {
   });
 });
 
+describe('mode score cible seul (maxTurns null)', () => {
+  test('ignore la vérification de questions et termine sur le score', () => {
+    const room = threePlayerRoom({ maxTurns: null, targetScore: 2 });
+    const rng = createSequenceRng([0.1, 0.0]);
+
+    // Une seule question dispo : sans maxTurns, aucune vérification n'est faite dessus.
+    const start = startGame(room, { questionPool: { verite: ['v1'], action: [] }, rng });
+    assert.equal(start.room.currentTurn.type, 'verite');
+
+    const answered = submitAnswer(start.room, { playerId: 'p1', text: 'réponse' });
+    const resolved = submitVote(answered.room, { voterId: 'p2', vote: 'up', turnNumber: 1 });
+    const resolved2 = submitVote(resolved.room, { voterId: 'p3', vote: 'up', turnNumber: 1, rng });
+
+    // 1 (vérité) + 2 pouces haut = 3 >= score cible 2
+    const ended = resolved2.effects.find((e) => e.type === 'GAME_ENDED');
+    assert.ok(ended);
+    assert.equal(ended.reason, 'targetScore');
+  });
+
+  test('refuse un salon sans maxTurns ni targetScore', () => {
+    assert.throws(
+      () =>
+        createRoom({ code: 'ABCD', hostId: 'p1', hostPseudo: 'A', maxTurns: null, targetScore: null }),
+      (err) => err.code === 'INVALID_SETTINGS'
+    );
+  });
+});
+
 describe('non-répétition des questions', () => {
   test('une question tirée ne ressort plus dans la même partie', () => {
     const room = threePlayerRoom({ maxTurns: 3 });

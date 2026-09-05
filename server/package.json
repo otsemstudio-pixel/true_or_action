@@ -9,7 +9,8 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
-    "test": "node --test"
+    "test": "node --test",
+    "db:seed": "node src/db/seed.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

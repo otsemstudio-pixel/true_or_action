@@ -76,14 +76,14 @@ describe('statut des joueurs', () => {
     room = markDisconnected(room, 'p2');
     assert.equal(room.players.find((p) => p.id === 'p2').status, 'disconnected');
     room = markReconnected(room, 'p2');
-    assert.equal(room.players.find((p) => p.id === 'p2').status, 'connected');
+    assert.equal(room.players.find((p) => p.id === 'p2').status, 'active');
   });
 
   test('exclure retire le joueur de l\'ordre des tours', () => {
     let room = addPlayer(baseRoom(), { id: 'p2', pseudo: 'B' });
     room = { ...room, turnOrder: ['p1', 'p2'] };
     room = excludePlayer(room, 'p2');
-    assert.equal(room.players.find((p) => p.id === 'p2').status, 'excluded');
+    assert.equal(room.players.find((p) => p.id === 'p2').status, 'left');
     assert.deepEqual(room.turnOrder, ['p1']);
   });
 

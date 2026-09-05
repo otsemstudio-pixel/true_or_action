@@ -1,8 +1,11 @@
 import { GameError } from './errors.js';
 import { PLAYERS } from './constants.js';
 
-export function createRoom({ code, hostId, hostPseudo, maxTurns, targetScore = null }) {
-  if (!Number.isInteger(maxTurns) || maxTurns < 1) {
+export function createRoom({ code, hostId, hostPseudo, maxTurns = null, targetScore = null }) {
+  if (maxTurns === null && targetScore === null) {
+    throw new GameError('INVALID_SETTINGS', 'Il faut définir un nombre de tours ou un score cible');
+  }
+  if (maxTurns !== null && (!Number.isInteger(maxTurns) || maxTurns < 1)) {
     throw new GameError('INVALID_SETTINGS', 'maxTurns doit être un entier positif');
   }
   if (targetScore !== null && (!Number.isInteger(targetScore) || targetScore < 1)) {
@@ -14,7 +17,7 @@ export function createRoom({ code, hostId, hostPseudo, maxTurns, targetScore = n
     hostId,
     status: 'waiting',
     settings: { maxTurns, targetScore },
-    players: [{ id: hostId, pseudo: hostPseudo, score: 0, status: 'connected' }],
+    players: [{ id: hostId, pseudo: hostPseudo, score: 0, status: 'active' }],
     turnOrder: [],
     currentTurnIndex: -1,
     turnNumber: 0,
@@ -37,7 +40,7 @@ export function addPlayer(room, { id, pseudo }) {
 
   return {
     ...room,
-    players: [...room.players, { id, pseudo, score: 0, status: 'connected' }],
+    players: [...room.players, { id, pseudo, score: 0, status: 'active' }],
   };
 }
 
@@ -59,11 +62,11 @@ export function markDisconnected(room, playerId) {
 }
 
 export function markReconnected(room, playerId) {
-  return updatePlayerStatus(room, playerId, 'connected');
+  return updatePlayerStatus(room, playerId, 'active');
 }
 
 export function excludePlayer(room, playerId) {
-  const updated = updatePlayerStatus(room, playerId, 'excluded');
+  const updated = updatePlayerStatus(room, playerId, 'left');
   return {
     ...updated,
     turnOrder: updated.turnOrder.filter((id) => id !== playerId),
