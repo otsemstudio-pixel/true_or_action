@@ -1,0 +1,22 @@
+:root {
+  color-scheme: dark;
+  --color-bg: #12131a;
+  --color-text: #f4f4f6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
