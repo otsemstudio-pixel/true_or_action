@@ -2,6 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createRoom,
+  updateSettings,
   addPlayer,
   removePlayer,
   markDisconnected,
@@ -29,6 +30,28 @@ describe('createRoom', () => {
     assert.equal(room.players.length, 1);
     assert.equal(room.players[0].id, 'p1');
     assert.equal(canStart(room), false);
+  });
+});
+
+describe('updateSettings', () => {
+  test('change le mode de fin de partie tant que le salon attend', () => {
+    const room = updateSettings(baseRoom(), { targetScore: 20 });
+    assert.deepEqual(room.settings, { maxTurns: null, targetScore: 20 });
+  });
+
+  test('refuse si aucun des deux réglages n\'est fourni', () => {
+    assert.throws(
+      () => updateSettings(baseRoom(), {}),
+      (err) => err.code === 'INVALID_SETTINGS'
+    );
+  });
+
+  test('refuse après le lancement de la partie', () => {
+    const room = { ...baseRoom(), status: 'playing' };
+    assert.throws(
+      () => updateSettings(room, { maxTurns: 5 }),
+      (err) => err.code === 'ROOM_NOT_JOINABLE'
+    );
   });
 });
 

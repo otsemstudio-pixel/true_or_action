@@ -2,6 +2,7 @@ export { GameError } from './errors.js';
 export { POINTS, VOTE_BONUS, TIMERS, PLAYERS, CHAT } from './constants.js';
 export {
   createRoom,
+  updateSettings,
   addPlayer,
   removePlayer,
   markDisconnected,

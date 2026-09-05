@@ -1,7 +1,7 @@
 import { GameError } from './errors.js';
 import { PLAYERS } from './constants.js';
 
-export function createRoom({ code, hostId, hostPseudo, maxTurns = null, targetScore = null }) {
+function validateSettings(maxTurns, targetScore) {
   if (maxTurns === null && targetScore === null) {
     throw new GameError('INVALID_SETTINGS', 'Il faut définir un nombre de tours ou un score cible');
   }
@@ -11,12 +11,17 @@ export function createRoom({ code, hostId, hostPseudo, maxTurns = null, targetSc
   if (targetScore !== null && (!Number.isInteger(targetScore) || targetScore < 1)) {
     throw new GameError('INVALID_SETTINGS', 'targetScore doit être un entier positif');
   }
+  return { maxTurns, targetScore };
+}
+
+export function createRoom({ code, hostId, hostPseudo, maxTurns = null, targetScore = null }) {
+  const settings = validateSettings(maxTurns, targetScore);
 
   return {
     code,
     hostId,
     status: 'waiting',
-    settings: { maxTurns, targetScore },
+    settings,
     players: [{ id: hostId, pseudo: hostPseudo, score: 0, status: 'active' }],
     turnOrder: [],
     currentTurnIndex: -1,
@@ -25,6 +30,14 @@ export function createRoom({ code, hostId, hostPseudo, maxTurns = null, targetSc
     currentTurn: null,
     history: [],
   };
+}
+
+export function updateSettings(room, { maxTurns = null, targetScore = null }) {
+  if (room.status !== 'waiting') {
+    throw new GameError('ROOM_NOT_JOINABLE', 'Impossible de modifier les réglages après le lancement');
+  }
+  const settings = validateSettings(maxTurns, targetScore);
+  return { ...room, settings };
 }
 
 export function addPlayer(room, { id, pseudo }) {

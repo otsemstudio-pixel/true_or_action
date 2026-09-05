@@ -3,6 +3,7 @@ import {
   TIMERS,
   CHAT,
   createRoom,
+  updateSettings,
   addPlayer,
   removePlayer,
   markDisconnected,
@@ -224,6 +225,21 @@ export function registerSocketHandlers(io) {
         cleanupIfEmpty(entry, code);
 
         ack?.({ ok: true });
+      } catch (err) {
+        ack?.(errorResponse(err));
+      }
+    });
+
+    socket.on('room:settings', (payload, ack) => {
+      try {
+        const entry = requireEntry(socket);
+        if (entry.room.hostId !== socket.data.playerId) {
+          throw new GameError('NOT_HOST', "Seul l'hôte peut modifier les réglages");
+        }
+        const { maxTurns = null, targetScore = null } = payload ?? {};
+        entry.room = updateSettings(entry.room, { maxTurns, targetScore });
+        io.to(entry.room.code).emit('room:settings', { settings: entry.room.settings });
+        ack?.({ ok: true, settings: entry.room.settings });
       } catch (err) {
         ack?.(errorResponse(err));
       }
