@@ -385,6 +385,11 @@ input {
   color: var(--color-verite-ink);
 }
 
+.settings-mode--niveau .btn {
+  font-size: var(--text-xs);
+  padding: 0 var(--space-2);
+}
+
 /* Indicateur de connexion */
 
 .connection-badge {
@@ -462,6 +467,13 @@ input {
 .partie-screen {
   gap: var(--space-4);
   padding-top: var(--space-6);
+}
+
+.niveau-indicator {
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  margin-top: calc(var(--space-2) * -1);
 }
 
 /* Tableau des scores */

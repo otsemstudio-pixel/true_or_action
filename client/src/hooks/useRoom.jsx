@@ -9,6 +9,7 @@ const initialState = {
   status: 'idle', // idle | waiting | playing | finished
   hostId: null,
   settings: null,
+  niveauMax: 1,
   players: [],
   turnNumber: 0,
   currentTurn: null,
@@ -23,6 +24,7 @@ function snapshotToState(snapshot) {
     status: snapshot.status,
     hostId: snapshot.hostId,
     settings: snapshot.settings,
+    niveauMax: snapshot.niveauMax,
     players: snapshot.players,
     turnNumber: snapshot.turnNumber,
     currentTurn: snapshot.currentTurn,
@@ -79,6 +81,9 @@ export function RoomProvider({ children }) {
     }
     function onSettings({ settings }) {
       setRoom((prev) => (prev.status === 'idle' ? prev : { ...prev, settings }));
+    }
+    function onNiveau({ niveauMax }) {
+      setRoom((prev) => (prev.status === 'idle' ? prev : { ...prev, niveauMax }));
     }
     function onGameStarted({ snapshot }) {
       setRoom(snapshotToState(snapshot));
@@ -156,6 +161,7 @@ export function RoomProvider({ children }) {
     socket.on('connect', onConnect);
     socket.on('room:players', onPlayers);
     socket.on('room:settings', onSettings);
+    socket.on('room:niveau', onNiveau);
     socket.on('game:started', onGameStarted);
     socket.on('game:restarted', onGameRestarted);
     socket.on('turn:started', onTurnStarted);
@@ -169,6 +175,7 @@ export function RoomProvider({ children }) {
       socket.off('connect', onConnect);
       socket.off('room:players', onPlayers);
       socket.off('room:settings', onSettings);
+      socket.off('room:niveau', onNiveau);
       socket.off('game:started', onGameStarted);
       socket.off('game:restarted', onGameRestarted);
       socket.off('turn:started', onTurnStarted);
@@ -206,6 +213,12 @@ export function RoomProvider({ children }) {
     return res;
   }, []);
 
+  const updateNiveauMax = useCallback(async (niveauMax) => {
+    const res = await emitWithAck('room:niveau', { niveauMax });
+    setRoom((prev) => ({ ...prev, niveauMax: res.niveauMax }));
+    return res;
+  }, []);
+
   const startGame = useCallback(() => emitWithAck('game:start', {}), []);
 
   const restartGame = useCallback(() => emitWithAck('game:rematch', {}), []);
@@ -224,6 +237,7 @@ export function RoomProvider({ children }) {
         joinRoom,
         leaveRoom,
         updateRoomSettings,
+        updateNiveauMax,
         startGame,
         restartGame,
         sendAnswer,

@@ -12,6 +12,20 @@ function createSequenceRng(values) {
   };
 }
 
+// Chaque tirage de question consomme toujours 3 valeurs rng, dans l'ordre :
+// type (vérité/action), panier (niveau max / niveaux inférieurs), index dans
+// le panier retenu. La valeur de panier est "ignorée" (BUCKET_DONT_CARE)
+// quand un seul des deux paniers est non vide : elle est quand même
+// consommée pour garder un nombre d'appels rng constant et prévisible.
+const BUCKET_DONT_CARE = 0.5;
+
+function pool({ veriteTop = [], veriteLower = [], actionTop = [], actionLower = [] } = {}) {
+  return {
+    verite: { top: veriteTop, lower: veriteLower },
+    action: { top: actionTop, lower: actionLower },
+  };
+}
+
 function threePlayerRoom(settings = {}) {
   let room = createRoom({ code: 'ABCD', hostId: 'p1', hostPseudo: 'A', ...settings });
   room = addPlayer(room, { id: 'p2', pseudo: 'B' });
@@ -23,7 +37,7 @@ describe('startGame', () => {
   test('refuse de démarrer sous le minimum de joueurs', () => {
     const room = createRoom({ code: 'ABCD', hostId: 'p1', hostPseudo: 'A', maxTurns: 3 });
     assert.throws(
-      () => startGame(room, { questionPool: { verite: ['v1', 'v2', 'v3'], action: ['a1', 'a2', 'a3'] } }),
+      () => startGame(room, { questionPool: pool({ veriteTop: ['v1', 'v2', 'v3'], actionTop: ['a1', 'a2', 'a3'] }) }),
       (err) => err.code === 'CANNOT_START'
     );
   });
@@ -31,9 +45,53 @@ describe('startGame', () => {
   test('refuse si les questions sont insuffisantes et indique combien il en manque', () => {
     const room = threePlayerRoom({ maxTurns: 3 });
     assert.throws(
-      () => startGame(room, { questionPool: { verite: ['v1'], action: ['a1', 'a2', 'a3'] } }),
+      () => startGame(room, { questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1', 'a2', 'a3'] }) }),
       (err) => err.code === 'NOT_ENOUGH_QUESTIONS' && err.details.missing.verite === 2 && err.details.missing.action === 0
     );
+  });
+
+  test('cumule les niveaux top et lower pour la vérification de suffisance', () => {
+    const room = threePlayerRoom({ maxTurns: 3 });
+    // 1 en niveau max + 2 en niveaux inférieurs = 3, suffisant pour 3 tours.
+    assert.doesNotThrow(() =>
+      startGame(room, {
+        questionPool: pool({ veriteTop: ['v1'], veriteLower: ['v2', 'v3'], actionTop: ['a1', 'a2', 'a3'] }),
+        rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+      })
+    );
+  });
+});
+
+describe('tirage pondéré par niveau', () => {
+  test('tire dans le niveau maximum ("top") quand le tirage de panier est sous 0.6', () => {
+    const room = threePlayerRoom({ maxTurns: 1 });
+    const rng = createSequenceRng([0.1, 0.59, 0.0]); // type=vérité, panier=top (0.59<0.6), index=0
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['top-1'], veriteLower: ['lower-1'], actionTop: ['a1'] }),
+      rng,
+    });
+    assert.equal(start.room.currentTurn.questionId, 'top-1');
+  });
+
+  test('tire dans les niveaux inférieurs ("lower") quand le tirage de panier est à 0.6 ou plus', () => {
+    const room = threePlayerRoom({ maxTurns: 1 });
+    const rng = createSequenceRng([0.1, 0.6, 0.0]); // type=vérité, panier=lower (0.6 >= 0.6), index=0
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['top-1'], veriteLower: ['lower-1'], actionTop: ['a1'] }),
+      rng,
+    });
+    assert.equal(start.room.currentTurn.questionId, 'lower-1');
+  });
+
+  test('tirage simple sur le panier disponible quand l\'autre est vide', () => {
+    const room = threePlayerRoom({ maxTurns: 1 });
+    // panier "top" vide pour vérité : même avec un tirage de panier < 0.6, on doit retomber sur "lower".
+    const rng = createSequenceRng([0.1, 0.1, 0.0]);
+    const start = startGame(room, {
+      questionPool: pool({ veriteLower: ['lower-1'], actionTop: ['a1'] }),
+      rng,
+    });
+    assert.equal(start.room.currentTurn.questionId, 'lower-1');
   });
 });
 
@@ -41,12 +99,12 @@ describe('cycle complet d\'une partie (maxTurns)', () => {
   test('tirage, réponse, vote unanime avec bonus, puis fin de partie', () => {
     const room = threePlayerRoom({ maxTurns: 2 });
     const rng = createSequenceRng([
-      0.1, 0.0, // tour 1 : vérité (index 0 -> v1)
-      0.9, 0.5, // tour 2 : action (liste ['a1','a2'], index 1 -> a2)
+      0.1, BUCKET_DONT_CARE, 0.0, // tour 1 : vérité (index 0 -> v1)
+      0.9, BUCKET_DONT_CARE, 0.5, // tour 2 : action (liste ['a1','a2'], index 1 -> a2)
     ]);
 
     const start = startGame(room, {
-      questionPool: { verite: ['v1', 'v2'], action: ['a1', 'a2'] },
+      questionPool: pool({ veriteTop: ['v1', 'v2'], actionTop: ['a1', 'a2'] }),
       rng,
     });
 
@@ -109,9 +167,9 @@ describe('cycle complet d\'une partie (maxTurns)', () => {
 describe('timeout de réponse', () => {
   test('0 point si personne ne répond dans les temps', () => {
     const room = threePlayerRoom({ maxTurns: 1 });
-    const rng = createSequenceRng([0.1, 0.0]);
+    const rng = createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]);
     const start = startGame(room, {
-      questionPool: { verite: ['v1'], action: ['a1'] },
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
       rng,
     });
 
@@ -128,9 +186,9 @@ describe('timeout de réponse', () => {
 describe('règles de vote', () => {
   function setupVotingPhase() {
     const room = threePlayerRoom({ maxTurns: 3 });
-    const rng = createSequenceRng([0.1, 0.0, 0.1, 0.0, 0.1, 0.0]);
+    const rng = createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]);
     const start = startGame(room, {
-      questionPool: { verite: ['v1', 'v2', 'v3'], action: ['a1', 'a2', 'a3'] },
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3'], actionTop: ['a1', 'a2', 'a3'] }),
       rng,
     });
     const answered = submitAnswer(start.room, { playerId: 'p1', text: 'réponse' });
@@ -166,8 +224,8 @@ describe('règles de vote', () => {
 describe('règles de réponse', () => {
   test('seul le joueur actif peut répondre', () => {
     const room = threePlayerRoom({ maxTurns: 1 });
-    const rng = createSequenceRng([0.1, 0.0]);
-    const start = startGame(room, { questionPool: { verite: ['v1'], action: ['a1'] }, rng });
+    const rng = createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]);
+    const start = startGame(room, { questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }), rng });
     assert.throws(
       () => submitAnswer(start.room, { playerId: 'p2', text: 'triche' }),
       (err) => err.code === 'NOT_YOUR_TURN'
@@ -176,8 +234,8 @@ describe('règles de réponse', () => {
 
   test('refuse une réponse vide', () => {
     const room = threePlayerRoom({ maxTurns: 1 });
-    const rng = createSequenceRng([0.1, 0.0]);
-    const start = startGame(room, { questionPool: { verite: ['v1'], action: ['a1'] }, rng });
+    const rng = createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]);
+    const start = startGame(room, { questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }), rng });
     assert.throws(
       () => submitAnswer(start.room, { playerId: 'p1', text: '   ' }),
       (err) => err.code === 'EMPTY_ANSWER'
@@ -188,10 +246,10 @@ describe('règles de réponse', () => {
 describe('mode score cible seul (maxTurns null)', () => {
   test('ignore la vérification de questions et termine sur le score', () => {
     const room = threePlayerRoom({ maxTurns: null, targetScore: 2 });
-    const rng = createSequenceRng([0.1, 0.0]);
+    const rng = createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]);
 
     // Une seule question dispo : sans maxTurns, aucune vérification n'est faite dessus.
-    const start = startGame(room, { questionPool: { verite: ['v1'], action: [] }, rng });
+    const start = startGame(room, { questionPool: pool({ veriteTop: ['v1'] }), rng });
     assert.equal(start.room.currentTurn.type, 'verite');
 
     const answered = submitAnswer(start.room, { playerId: 'p1', text: 'réponse' });
@@ -217,12 +275,12 @@ describe('non-répétition des questions', () => {
   test('une question tirée ne ressort plus dans la même partie', () => {
     const room = threePlayerRoom({ maxTurns: 3 });
     const rng = createSequenceRng([
-      0.1, 0.0, // tour 1
-      0.1, 0.0, // tour 2
-      0.1, 0.0, // tour 3
+      0.1, BUCKET_DONT_CARE, 0.0, // tour 1
+      0.1, BUCKET_DONT_CARE, 0.0, // tour 2
+      0.1, BUCKET_DONT_CARE, 0.0, // tour 3
     ]);
     const start = startGame(room, {
-      questionPool: { verite: ['v1', 'v2', 'v3'], action: ['a1', 'a2', 'a3'] },
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3'], actionTop: ['a1', 'a2', 'a3'] }),
       rng,
     });
 
@@ -239,5 +297,24 @@ describe('non-répétition des questions', () => {
     }
 
     assert.equal(new Set(drawnIds).size, drawnIds.length);
+  });
+
+  test('le cumul top + lower est pris en compte pour la non-répétition', () => {
+    const room = threePlayerRoom({ maxTurns: 2 });
+    // Une seule question par panier/type : le deuxième tirage du même type doit
+    // forcément retomber sur l'autre panier, jamais répéter le même id.
+    const rng = createSequenceRng([
+      0.1, 0.1, 0.0, // tour 1 : vérité, panier top (id top-v)
+      0.1, 0.9, 0.0, // tour 2 : vérité à nouveau, mais top épuisé -> lower (id lower-v)
+    ]);
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['top-v'], veriteLower: ['lower-v'], actionTop: ['a1', 'a2'] }),
+      rng,
+    });
+    assert.equal(start.room.currentTurn.questionId, 'top-v');
+
+    const answered = submitAnswer(start.room, { playerId: 'p1', text: 'réponse' });
+    const resolved = voteTimeout(answered.room, { turnNumber: 1, rng });
+    assert.equal(resolved.room.currentTurn.questionId, 'lower-v');
   });
 });

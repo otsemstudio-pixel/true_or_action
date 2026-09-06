@@ -21,6 +21,7 @@ export function buildSnapshot(entry) {
     status: room.status,
     hostId: room.hostId,
     settings: room.settings,
+    niveauMax: room.niveauMax,
     players: room.players,
     turnNumber: room.turnNumber,
     currentTurn,

@@ -3,6 +3,7 @@ export { POINTS, VOTE_BONUS, TIMERS, PLAYERS, CHAT } from './constants.js';
 export {
   createRoom,
   updateSettings,
+  updateNiveauMax,
   addPlayer,
   removePlayer,
   restartRoom,

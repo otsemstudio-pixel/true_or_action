@@ -4,6 +4,7 @@ import {
   CHAT,
   createRoom,
   updateSettings,
+  updateNiveauMax,
   addPlayer,
   removePlayer,
   restartRoom,
@@ -365,6 +366,26 @@ export function registerSocketHandlers(io) {
       }
     });
 
+    socket.on('room:niveau', async (payload, ack) => {
+      try {
+        const entry = requireEntry(socket);
+        if (entry.room.hostId !== socket.data.playerId) {
+          throw new GameError('NOT_HOST', "Seul l'hôte peut modifier le niveau des questions");
+        }
+        const { niveauMax } = payload ?? {};
+        await runExclusive(entry, async () => {
+          const updatedRoom = updateNiveauMax(entry.room, niveauMax);
+          await repo.updateRoomNiveauMax(pool, entry.dbRoomId, niveauMax);
+          entry.room = updatedRoom;
+        });
+
+        io.to(entry.room.code).emit('room:niveau', { niveauMax: entry.room.niveauMax });
+        ack?.({ ok: true, niveauMax: entry.room.niveauMax });
+      } catch (err) {
+        ack?.(errorResponse(err));
+      }
+    });
+
     socket.on('game:rematch', async (_, ack) => {
       try {
         const entry = requireEntry(socket);
@@ -401,7 +422,7 @@ export function registerSocketHandlers(io) {
         }
 
         const enriched = await runExclusive(entry, async () => {
-          const { questionPool, byId } = await repo.fetchQuestionBank(pool, { niveauMax: 1 });
+          const { questionPool, byId } = await repo.fetchQuestionBank(pool, { niveauMax: entry.room.niveauMax });
           const { room, effects } = startGame(entry.room, { questionPool });
           const effectsEnriched = enrichEffects(effects);
 

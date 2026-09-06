@@ -1,6 +1,12 @@
 import { GameError } from './errors.js';
 import { PLAYERS } from './constants.js';
 
+const NIVEAUX = [1, 2, 3];
+const EMPTY_QUESTION_POOL = {
+  verite: { top: [], lower: [] },
+  action: { top: [], lower: [] },
+};
+
 function validateSettings(maxTurns, targetScore) {
   if (maxTurns === null && targetScore === null) {
     throw new GameError('INVALID_SETTINGS', 'Il faut définir un nombre de tours ou un score cible');
@@ -14,7 +20,14 @@ function validateSettings(maxTurns, targetScore) {
   return { maxTurns, targetScore };
 }
 
-export function createRoom({ code, hostId, hostPseudo, maxTurns = null, targetScore = null }) {
+function validateNiveauMax(niveauMax) {
+  if (!NIVEAUX.includes(niveauMax)) {
+    throw new GameError('INVALID_NIVEAU', 'Le niveau doit être 1, 2 ou 3');
+  }
+  return niveauMax;
+}
+
+export function createRoom({ code, hostId, hostPseudo, maxTurns = null, targetScore = null, niveauMax = 1 }) {
   const settings = validateSettings(maxTurns, targetScore);
 
   return {
@@ -22,11 +35,12 @@ export function createRoom({ code, hostId, hostPseudo, maxTurns = null, targetSc
     hostId,
     status: 'waiting',
     settings,
+    niveauMax: validateNiveauMax(niveauMax),
     players: [{ id: hostId, pseudo: hostPseudo, score: 0, status: 'active' }],
     turnOrder: [],
     currentTurnIndex: -1,
     turnNumber: 0,
-    questionPool: { verite: [], action: [] },
+    questionPool: EMPTY_QUESTION_POOL,
     currentTurn: null,
     history: [],
   };
@@ -38,6 +52,13 @@ export function updateSettings(room, { maxTurns = null, targetScore = null }) {
   }
   const settings = validateSettings(maxTurns, targetScore);
   return { ...room, settings };
+}
+
+export function updateNiveauMax(room, niveauMax) {
+  if (room.status !== 'waiting') {
+    throw new GameError('ROOM_NOT_JOINABLE', 'Impossible de modifier le niveau après le lancement');
+  }
+  return { ...room, niveauMax: validateNiveauMax(niveauMax) };
 }
 
 export function addPlayer(room, { id, pseudo }) {
@@ -82,7 +103,7 @@ export function restartRoom(room) {
     turnOrder: [],
     currentTurnIndex: -1,
     turnNumber: 0,
-    questionPool: { verite: [], action: [] },
+    questionPool: EMPTY_QUESTION_POOL,
     currentTurn: null,
     history: [],
   };

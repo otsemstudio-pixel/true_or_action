@@ -4,6 +4,7 @@ import { useRoom } from '../hooks/useRoom.jsx';
 import Button from '../components/Button.jsx';
 import TextField from '../components/TextField.jsx';
 import ErrorBanner from '../components/ErrorBanner.jsx';
+import { NIVEAUX, NIVEAU_LABELS, NIVEAU_DESCRIPTIONS } from '../lib/niveau.js';
 
 function copyToClipboard(text) {
   if (navigator.clipboard?.writeText) {
@@ -14,8 +15,9 @@ function copyToClipboard(text) {
 
 function SalonAttenteScreen() {
   const { user } = useAuth();
-  const { room, leaveRoom, updateRoomSettings, startGame } = useRoom();
+  const { room, leaveRoom, updateRoomSettings, updateNiveauMax, startGame } = useRoom();
   const isHost = String(user.id) === room.hostId;
+  const [niveauBusy, setNiveauBusy] = useState(false);
 
   // Champs d'édition locaux à l'hôte : initialisés une fois depuis les réglages du
   // salon, puis pilotés uniquement par la saisie locale. Les réglages de room ne
@@ -46,6 +48,19 @@ function SalonAttenteScreen() {
   const handleModeSwitch = (nextMode) => {
     setMode(nextMode);
     applySettings(nextMode, nextMode === 'turns' ? maxTurns : targetScore);
+  };
+
+  const handleNiveauChange = async (niveau) => {
+    if (niveau === room.niveauMax) return;
+    setError(null);
+    setNiveauBusy(true);
+    try {
+      await updateNiveauMax(niveau);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setNiveauBusy(false);
+    }
   };
 
   const handleCopy = async () => {
@@ -149,6 +164,33 @@ function SalonAttenteScreen() {
               ? `Score cible : ${room.settings.targetScore} points`
               : `${room.settings?.maxTurns ?? '—'} tours`}
           </p>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Niveau des questions</h2>
+        {isHost ? (
+          <>
+            <div className="settings-mode settings-mode--niveau">
+              {NIVEAUX.map((niveau) => (
+                <button
+                  key={niveau}
+                  type="button"
+                  className={`btn btn-ghost${room.niveauMax === niveau ? ' btn-mode-active' : ''}`}
+                  disabled={niveauBusy}
+                  onClick={() => handleNiveauChange(niveau)}
+                >
+                  {NIVEAU_LABELS[niveau]}
+                </button>
+              ))}
+            </div>
+            <p className="menu-item-hint">{NIVEAU_DESCRIPTIONS[room.niveauMax]}</p>
+          </>
+        ) : (
+          <>
+            <p>{NIVEAU_LABELS[room.niveauMax]}</p>
+            <p className="menu-item-hint">{NIVEAU_DESCRIPTIONS[room.niveauMax]}</p>
+          </>
         )}
       </div>
 

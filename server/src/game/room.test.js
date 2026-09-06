@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   createRoom,
   updateSettings,
+  updateNiveauMax,
   addPlayer,
   removePlayer,
   restartRoom,
@@ -31,6 +32,34 @@ describe('createRoom', () => {
     assert.equal(room.players.length, 1);
     assert.equal(room.players[0].id, 'p1');
     assert.equal(canStart(room), false);
+  });
+
+  test('niveau 1 par défaut', () => {
+    assert.equal(baseRoom().niveauMax, 1);
+  });
+
+  test('rejette un niveau invalide', () => {
+    assert.throws(
+      () => createRoom({ code: 'ABCD', hostId: 'p1', hostPseudo: 'Hôte', maxTurns: 5, niveauMax: 4 }),
+      (err) => err.code === 'INVALID_NIVEAU'
+    );
+  });
+});
+
+describe('updateNiveauMax', () => {
+  test('change le niveau tant que le salon attend', () => {
+    const room = updateNiveauMax(baseRoom(), 2);
+    assert.equal(room.niveauMax, 2);
+  });
+
+  test('refuse un niveau hors de 1, 2, 3', () => {
+    assert.throws(() => updateNiveauMax(baseRoom(), 0), (err) => err.code === 'INVALID_NIVEAU');
+    assert.throws(() => updateNiveauMax(baseRoom(), 5), (err) => err.code === 'INVALID_NIVEAU');
+  });
+
+  test('refuse après le lancement de la partie', () => {
+    const room = { ...baseRoom(), status: 'playing' };
+    assert.throws(() => updateNiveauMax(room, 2), (err) => err.code === 'ROOM_NOT_JOINABLE');
   });
 });
 

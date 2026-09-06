@@ -2,6 +2,8 @@ import { GameError } from './errors.js';
 import { POINTS, VOTE_BONUS, TIMERS } from './constants.js';
 import { canStart, getPlayer } from './room.js';
 
+const TOP_NIVEAU_WEIGHT = 0.6;
+
 function defaultRng() {
   return Math.random();
 }
@@ -14,8 +16,8 @@ export function startGame(room, { questionPool, rng = defaultRng }) {
   const { maxTurns } = room.settings;
   if (maxTurns !== null) {
     const available = {
-      verite: questionPool?.verite?.length ?? 0,
-      action: questionPool?.action?.length ?? 0,
+      verite: bucketCount(questionPool?.verite),
+      action: bucketCount(questionPool?.action),
     };
     const missing = {
       verite: Math.max(0, maxTurns - available.verite),
@@ -38,8 +40,8 @@ export function startGame(room, { questionPool, rng = defaultRng }) {
     currentTurnIndex: -1,
     turnNumber: 0,
     questionPool: {
-      verite: [...questionPool.verite],
-      action: [...questionPool.action],
+      verite: cloneBucket(questionPool.verite),
+      action: cloneBucket(questionPool.action),
     },
   };
 
@@ -143,19 +145,47 @@ function assertTurnNumber(room, turnNumber) {
   }
 }
 
+function bucketCount(buckets) {
+  return (buckets?.top?.length ?? 0) + (buckets?.lower?.length ?? 0);
+}
+
+function cloneBucket(buckets) {
+  return { top: [...(buckets?.top ?? [])], lower: [...(buckets?.lower ?? [])] };
+}
+
 function drawType(rng) {
   return rng() < 0.5 ? 'verite' : 'action';
 }
 
+// Tire dans niveau <= niveau_max du salon (déjà filtré par l'appelant lors de
+// la construction du pool). 60% de chances de tirer dans le niveau maximum
+// autorisé ("top"), 40% dans les niveaux inférieurs ("lower"), si les deux
+// ensembles sont non vides ; sinon tirage simple sur l'ensemble disponible.
+// Le rng est toujours consommé de la même façon (type, panier, index) pour
+// rester prévisible, que le choix de panier soit réellement disputé ou non.
 function drawQuestion(pool, type, rng) {
-  const list = pool[type];
-  if (list.length === 0) {
+  const buckets = pool[type];
+  const hasTop = buckets.top.length > 0;
+  const hasLower = buckets.lower.length > 0;
+
+  if (!hasTop && !hasLower) {
     throw new GameError('NO_QUESTIONS_LEFT', `Plus de question de type ${type} disponible`);
   }
+
+  const bucketRoll = rng();
+  let bucketName;
+  if (hasTop && hasLower) {
+    bucketName = bucketRoll < TOP_NIVEAU_WEIGHT ? 'top' : 'lower';
+  } else {
+    bucketName = hasTop ? 'top' : 'lower';
+  }
+
+  const list = buckets[bucketName];
   const index = Math.floor(rng() * list.length);
   const questionId = list[index];
   const nextList = [...list.slice(0, index), ...list.slice(index + 1)];
-  return { questionId, nextPool: { ...pool, [type]: nextList } };
+  const nextPool = { ...pool, [type]: { ...buckets, [bucketName]: nextList } };
+  return { questionId, nextPool };
 }
 
 function nextActiveIndex(room) {

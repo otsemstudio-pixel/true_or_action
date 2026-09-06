@@ -25,6 +25,10 @@ export async function updateRoomHost(db, roomId, hostId) {
   await db.query('UPDATE rooms SET host_id = $1 WHERE id = $2', [hostId, roomId]);
 }
 
+export async function updateRoomNiveauMax(db, roomId, niveauMax) {
+  await db.query('UPDATE rooms SET niveau_max = $1 WHERE id = $2', [niveauMax, roomId]);
+}
+
 export async function updateRoomStatus(db, roomId, status) {
   if (status === 'finished') {
     await db.query("UPDATE rooms SET status = $1, finished_at = now() WHERE id = $2", [status, roomId]);
@@ -206,16 +210,24 @@ export async function fetchRecentMessages(db, roomId, limit = 30) {
 
 // --- questions ---
 
+// Bucket "top" = niveau exactement égal à niveauMax (le niveau choisi par
+// l'hôte), "lower" = tous les niveaux strictement en dessous. C'est sur ce
+// découpage que game/turn.js applique la pondération 60/40 du tirage.
 export async function fetchQuestionBank(db, { niveauMax = 1 } = {}) {
-  const res = await db.query('SELECT id, type, contenu FROM questions WHERE is_public = true AND niveau <= $1', [
-    niveauMax,
-  ]);
+  const res = await db.query(
+    'SELECT id, type, contenu, niveau FROM questions WHERE is_public = true AND niveau <= $1',
+    [niveauMax]
+  );
 
-  const questionPool = { verite: [], action: [] };
+  const questionPool = {
+    verite: { top: [], lower: [] },
+    action: { top: [], lower: [] },
+  };
   const byId = new Map();
 
   for (const row of res.rows) {
-    questionPool[row.type].push(row.id);
+    const bucket = row.niveau === niveauMax ? 'top' : 'lower';
+    questionPool[row.type][bucket].push(row.id);
     byId.set(row.id, row.contenu);
   }
 

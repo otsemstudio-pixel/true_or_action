@@ -54,8 +54,14 @@ export async function loadRoomEntryFromDb(roomRow) {
     niveauMax: roomRow.niveau_max ?? 1,
   });
   const questionPool = {
-    verite: fullPool.verite.filter((id) => !usedQuestionIds.has(id)),
-    action: fullPool.action.filter((id) => !usedQuestionIds.has(id)),
+    verite: {
+      top: fullPool.verite.top.filter((id) => !usedQuestionIds.has(id)),
+      lower: fullPool.verite.lower.filter((id) => !usedQuestionIds.has(id)),
+    },
+    action: {
+      top: fullPool.action.top.filter((id) => !usedQuestionIds.has(id)),
+      lower: fullPool.action.lower.filter((id) => !usedQuestionIds.has(id)),
+    },
   };
 
   const room = {
@@ -63,6 +69,7 @@ export async function loadRoomEntryFromDb(roomRow) {
     hostId: String(roomRow.host_id),
     status: roomRow.status,
     settings: { maxTurns: roomRow.max_turns, targetScore: roomRow.score_cible },
+    niveauMax: roomRow.niveau_max ?? 1,
     players,
     turnOrder,
     currentTurnIndex,

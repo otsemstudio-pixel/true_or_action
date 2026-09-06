@@ -5,6 +5,7 @@ import Wheel from '../components/Wheel.jsx';
 import TurnPanel from '../components/TurnPanel.jsx';
 import ChatPanel from '../components/ChatPanel.jsx';
 import ResultToast from '../components/ResultToast.jsx';
+import { NIVEAU_LABELS } from '../lib/niveau.js';
 
 function PartieScreen() {
   const { user } = useAuth();
@@ -14,6 +15,8 @@ function PartieScreen() {
   return (
     <div className="screen partie-screen">
       <ScoreBoard players={room.players} activePlayerId={room.currentTurn?.activePlayerId} />
+
+      <p className="niveau-indicator">{NIVEAU_LABELS[room.niveauMax]}</p>
 
       <ResultToast result={room.lastResult} players={room.players} />
 
