@@ -10,7 +10,7 @@ import { deleteInactiveGuests } from './auth/repository.js';
 
 const app = express();
 
-app.use(cors({ origin: env.clientOrigin }));
+app.use(cors({ origin: env.clientOrigins }));
 app.use(express.json());
 
 app.get('/health', async (req, res) => {
@@ -36,7 +36,14 @@ app.use((err, req, res, next) => {
 const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
-  cors: { origin: env.clientOrigin },
+  cors: { origin: env.clientOrigins },
+  // Sans sessions collantes configurées devant plusieurs instances, les
+  // requêtes HTTP successives du transport "polling" peuvent atterrir sur
+  // des instances différentes et rompre le handshake — ce qui remonte côté
+  // navigateur comme des erreurs CORS ou des coupures WebSocket trompeuses.
+  // Le WebSocket seul n'a besoin que d'une connexion persistante unique,
+  // donc aucune affinité de session à maintenir entre plusieurs requêtes.
+  transports: ['websocket'],
 });
 
 registerSocketHandlers(io);
