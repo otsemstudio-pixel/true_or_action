@@ -38,6 +38,7 @@ export default {
     rejoindre: 'Rejoindre',
     gererMesQuestions: 'Gérer mes questions',
     bientotDisponible: 'Bientôt disponible.',
+    commentJouer: 'Comment jouer',
   },
 
   salon: {
@@ -55,6 +56,7 @@ export default {
     toursAffiche: { one: '{{count}} tour', other: '{{count}} tours' },
     niveauDesQuestions: 'Niveau des questions',
     langueDesQuestions: 'Langue des questions',
+    commentJouer: 'Comment jouer',
     lancerLaPartie: 'Lancer la partie',
     enAttenteHoteLance: "En attente que l'hôte lance la partie…",
     quitterLeSalon: 'Quitter le salon',
@@ -120,6 +122,23 @@ export default {
 
   app: {
     etatSalonInconnu: 'État de salon inconnu. Essayez de recharger la page.',
+  },
+
+  didacticiel: {
+    titre: 'Comment jouer',
+    tourTitre: 'Le tour',
+    tourTexte: 'La roue tire Vérité ou Action. Le joueur actif répond, les autres votent.',
+    pointsTitre: 'Les points',
+    pointsTexte:
+      'Vérité rapporte {{verite}} point, Action {{action}} points. Chaque pouce vers le haut ajoute {{bonus}} point.',
+    tempsTitre: 'Le temps',
+    tempsTexte:
+      '{{answer}} secondes pour répondre, {{vote}} secondes pour voter. Passé ce délai, le tour se termine sans point.',
+    niveauxTitre: 'Les niveaux',
+    niveauxTexte: "L'hôte choisit le niveau des questions : Tout public, Entre amis, ou Sans filtre.",
+    voteTitre: 'Le vote',
+    voteTexte: 'Un pouce vers le haut donne un point bonus. À 2 joueurs, le vote est sauté.',
+    compris: 'Compris, on joue !',
   },
 
   erreurLimite: {

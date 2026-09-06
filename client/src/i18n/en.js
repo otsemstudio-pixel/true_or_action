@@ -38,6 +38,7 @@ export default {
     rejoindre: 'Join',
     gererMesQuestions: 'Manage my questions',
     bientotDisponible: 'Coming soon.',
+    commentJouer: 'How to play',
   },
 
   salon: {
@@ -55,6 +56,7 @@ export default {
     toursAffiche: { one: '{{count}} turn', other: '{{count}} turns' },
     niveauDesQuestions: 'Question level',
     langueDesQuestions: 'Question language',
+    commentJouer: 'How to play',
     lancerLaPartie: 'Start the game',
     enAttenteHoteLance: 'Waiting for the host to start the game…',
     quitterLeSalon: 'Leave the room',
@@ -120,6 +122,21 @@ export default {
 
   app: {
     etatSalonInconnu: 'Unknown room state. Try reloading the page.',
+  },
+
+  didacticiel: {
+    titre: 'How to play',
+    tourTitre: 'The turn',
+    tourTexte: 'The wheel picks Truth or Dare. The active player answers, the others vote.',
+    pointsTitre: 'Points',
+    pointsTexte: 'Truth is worth {{verite}} point, Dare {{action}} points. Each thumbs up adds {{bonus}} point.',
+    tempsTitre: 'Timing',
+    tempsTexte: '{{answer}} seconds to answer, {{vote}} seconds to vote. Past that, the turn ends with no points.',
+    niveauxTitre: 'Levels',
+    niveauxTexte: 'The host picks the question level: Family friendly, Between friends, or No filter.',
+    voteTitre: 'Voting',
+    voteTexte: 'A thumbs up adds a bonus point. With 2 players, voting is skipped.',
+    compris: "Got it, let's play!",
   },
 
   erreurLimite: {

@@ -6,7 +6,9 @@ import { translateError, SUPPORTED_LANGUES, LANGUE_NATIVE_NAMES } from '../i18n/
 import Button from '../components/Button.jsx';
 import TextField from '../components/TextField.jsx';
 import ErrorBanner from '../components/ErrorBanner.jsx';
+import Tutoriel from '../components/Tutoriel.jsx';
 import { NIVEAUX } from '../lib/niveau.js';
+import { markTutorielSeen } from '../lib/tutoriel.js';
 
 const MIN_PLAYERS = 2;
 
@@ -35,6 +37,7 @@ function SalonAttenteScreen() {
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [tutorielOpen, setTutorielOpen] = useState(false);
 
   const canStart = room.players.length >= MIN_PLAYERS;
 
@@ -112,6 +115,10 @@ function SalonAttenteScreen() {
           {copied ? t('commun.copie') : t('commun.copier')}
         </Button>
       </div>
+
+      <Button variant="ghost" onClick={() => setTutorielOpen(true)}>
+        {t('salon.commentJouer')}
+      </Button>
 
       <ErrorBanner>{error}</ErrorBanner>
 
@@ -245,6 +252,14 @@ function SalonAttenteScreen() {
       <Button variant="danger-ghost" onClick={leaveRoom}>
         {t('salon.quitterLeSalon')}
       </Button>
+
+      <Tutoriel
+        open={tutorielOpen}
+        onClose={() => {
+          markTutorielSeen();
+          setTutorielOpen(false);
+        }}
+      />
     </div>
   );
 }

@@ -930,7 +930,7 @@ input {
   color: var(--color-text-muted);
 }
 
-/* Panneau modal (récapitulatif) */
+/* Panneaux modaux (récapitulatif, didacticiel) */
 
 .modal-overlay {
   position: fixed;
@@ -962,6 +962,36 @@ input {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+}
+
+.tutoriel-sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.tutoriel-section {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.tutoriel-icon {
+  font-size: var(--text-xl);
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.tutoriel-section h3 {
+  font-size: var(--text-base);
+  font-weight: 700;
+  margin-bottom: var(--space-1);
+}
+
+.tutoriel-section p {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  line-height: 1.4;
 }
 
 /* Écran de fin */
