@@ -21,12 +21,15 @@ function pickTargetIndex(type, turnNumber) {
 function Wheel({ type, turnNumber }) {
   const { t } = useI18n();
   const [rotation, setRotation] = useState(0);
+  const [landed, setLanded] = useState(false);
   const rotationRef = useRef(0);
   const spunForTurn = useRef(null);
+  const wheelRef = useRef(null);
 
   useEffect(() => {
     if (!type || turnNumber == null || spunForTurn.current === turnNumber) return;
     spunForTurn.current = turnNumber;
+    setLanded(false);
 
     const targetIndex = pickTargetIndex(type, turnNumber);
     const targetCenter = targetIndex * SEGMENT_ANGLE + SEGMENT_ANGLE / 2;
@@ -41,10 +44,22 @@ function Wheel({ type, turnNumber }) {
     setRotation(next);
   }, [type, turnNumber]);
 
+  // Arrêt marqué sur le résultat : le pointeur rebondit une fois la roue
+  // stabilisée, plutôt qu'un simple arrêt silencieux.
+  useEffect(() => {
+    const el = wheelRef.current;
+    if (!el) return undefined;
+    const handleEnd = (e) => {
+      if (e.propertyName === 'transform') setLanded(true);
+    };
+    el.addEventListener('transitionend', handleEnd);
+    return () => el.removeEventListener('transitionend', handleEnd);
+  }, []);
+
   return (
     <div className="wheel-wrap">
-      <div className="wheel-pointer" aria-hidden="true" />
-      <div className="wheel" style={{ transform: `rotate(${rotation}deg)` }} aria-hidden="true" />
+      <div className={`wheel-pointer${landed ? ' wheel-pointer--landed' : ''}`} aria-hidden="true" />
+      <div ref={wheelRef} className="wheel" style={{ transform: `rotate(${rotation}deg)` }} aria-hidden="true" />
       <span className="sr-only">
         {type ? t('partie.resultat', { type: type === 'verite' ? t('partie.verite') : t('partie.action') }) : t('partie.resultatAttente')}
       </span>

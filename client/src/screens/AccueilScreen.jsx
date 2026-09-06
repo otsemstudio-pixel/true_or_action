@@ -6,6 +6,7 @@ import TextField from '../components/TextField.jsx';
 import Button from '../components/Button.jsx';
 import ErrorBanner from '../components/ErrorBanner.jsx';
 import LangueSelector from '../components/LangueSelector.jsx';
+import ThemeSelector from '../components/ThemeSelector.jsx';
 
 const EMPTY_FORM = { pseudo: '', email: '', password: '' };
 
@@ -42,19 +43,25 @@ function AccueilScreen() {
   };
 
   return (
-    <div className="screen screen--centered">
-      <LangueSelector />
+    <div className="screen screen--centered accueil-screen">
+      <div className="accueil-toolbar">
+        <LangueSelector />
+        <ThemeSelector />
+      </div>
 
-      <header>
-        <h1 className="logo">
-          <span className="logo-action">{t('accueil.logoAction')}</span>
-          <span className="logo-sep">{t('accueil.logoSep')}</span>
-          <span className="logo-verite">{t('accueil.logoVerite')}</span>
+      <header className="accueil-header">
+        <h1 className="accueil-title">
+          <span className="accueil-title-line accueil-title-line--action">{t('accueil.logoAction')}</span>
+          <span className="accueil-title-sep">{t('accueil.logoSep')}</span>
+          <span className="accueil-title-line accueil-title-line--verite">{t('accueil.logoVerite')}</span>
         </h1>
-        <p className="tagline">{t('accueil.tagline')}</p>
+        <svg className="accueil-squiggle" viewBox="0 0 160 16" aria-hidden="true">
+          <path d="M2 10 C 20 2, 40 2, 58 10 S 96 18, 114 10 S 142 2, 158 10" />
+        </svg>
+        <p className="tagline accueil-tagline">{t('accueil.tagline')}</p>
       </header>
 
-      <form className="card" onSubmit={handleSubmit}>
+      <form className="accueil-card" onSubmit={handleSubmit}>
         {mode === 'register' && (
           <TextField
             id="pseudo"
@@ -86,7 +93,7 @@ function AccueilScreen() {
 
         <ErrorBanner>{error}</ErrorBanner>
 
-        <Button type="submit" block busy={busy}>
+        <Button type="submit" variant="dark" block arrow busy={busy}>
           {mode === 'register' ? t('accueil.sInscrire') : t('accueil.seConnecter')}
         </Button>
       </form>

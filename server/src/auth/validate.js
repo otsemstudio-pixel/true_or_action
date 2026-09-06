@@ -1,5 +1,6 @@
 import { AuthError } from './errors.js';
 import { SUPPORTED_LANGUES, DEFAULT_LANGUE } from '../config/langues.js';
+import { SUPPORTED_THEMES, DEFAULT_THEME } from '../config/themes.js';
 
 const PSEUDO_RE = /^[a-zA-Z0-9_-]{3,20}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -45,4 +46,12 @@ export function validateLangue(langue) {
     throw new AuthError('INVALID_LANGUE', 'La langue doit être fr ou en', 400, { allowed: SUPPORTED_LANGUES });
   }
   return langue;
+}
+
+export function validateTheme(theme) {
+  if (theme == null) return DEFAULT_THEME;
+  if (!SUPPORTED_THEMES.includes(theme)) {
+    throw new AuthError('INVALID_THEME', 'Le thème doit être light ou dark', 400, { allowed: SUPPORTED_THEMES });
+  }
+  return theme;
 }

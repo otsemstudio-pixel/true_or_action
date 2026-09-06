@@ -7,6 +7,7 @@ import Button from '../components/Button.jsx';
 import TextField from '../components/TextField.jsx';
 import ErrorBanner from '../components/ErrorBanner.jsx';
 import LangueSelector from '../components/LangueSelector.jsx';
+import ThemeSelector from '../components/ThemeSelector.jsx';
 import Tutoriel from '../components/Tutoriel.jsx';
 import { hasTutorielSeen, markTutorielSeen } from '../lib/tutoriel.js';
 
@@ -60,30 +61,33 @@ function MenuScreen() {
   };
 
   return (
-    <div className="screen">
-      <header>
-        <p className="tagline">{t('menu.salut', { pseudo: user.pseudo })}</p>
-        <div className="menu-header-row">
-          <LangueSelector />
-          <button type="button" className="link-btn" onClick={() => setTutorielOpen(true)}>
-            {t('menu.commentJouer')}
-          </button>
-          <button type="button" className="link-btn" onClick={logout}>
-            {t('menu.seDeconnecter')}
-          </button>
-        </div>
-      </header>
+    <div className="screen menu-screen">
+      <div className="menu-toolbar">
+        <LangueSelector />
+        <ThemeSelector />
+      </div>
+
+      <div className="menu-header-row">
+        <button type="button" className="link-btn" onClick={() => setTutorielOpen(true)}>
+          {t('menu.commentJouer')}
+        </button>
+        <button type="button" className="link-btn" onClick={logout}>
+          {t('menu.seDeconnecter')}
+        </button>
+      </div>
+
+      <h1 className="menu-greeting">{t('menu.salut', { pseudo: user.pseudo })}</h1>
 
       <ErrorBanner>{error}</ErrorBanner>
 
-      <div className="card menu-actions">
-        <Button variant="primary" block busy={busy === 'create'} disabled={busy !== null} onClick={handleCreate}>
+      <div className="menu-block menu-block--action">
+        <Button variant="dark" block arrow busy={busy === 'create'} disabled={busy !== null} onClick={handleCreate}>
           {t('menu.creerUnSalon')}
         </Button>
-        <p className="menu-item-hint">{t('menu.creerUnSalonHint')}</p>
+        <p className="menu-block-hint">{t('menu.creerUnSalonHint')}</p>
       </div>
 
-      <form className="card menu-actions" onSubmit={handleJoin}>
+      <form className="menu-block menu-block--verite" onSubmit={handleJoin}>
         <TextField
           id="room-code"
           label={t('menu.codeDuSalon')}
@@ -92,22 +96,16 @@ function MenuScreen() {
           value={code}
           onChange={(e) => setCode(e.target.value.toUpperCase())}
         />
-        <Button
-          type="submit"
-          variant="secondary"
-          block
-          busy={busy === 'join'}
-          disabled={busy !== null || !code.trim()}
-        >
+        <Button type="submit" variant="dark" block arrow busy={busy === 'join'} disabled={busy !== null || !code.trim()}>
           {t('menu.rejoindre')}
         </Button>
       </form>
 
-      <div className="card menu-actions">
+      <div className="menu-block menu-block--muted">
         <Button variant="ghost" block disabled>
           {t('menu.gererMesQuestions')}
         </Button>
-        <p className="menu-item-hint">{t('menu.bientotDisponible')}</p>
+        <p className="menu-block-hint">{t('menu.bientotDisponible')}</p>
       </div>
 
       <Tutoriel open={tutorielOpen} onClose={closeTutoriel} />

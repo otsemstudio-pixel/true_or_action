@@ -4,6 +4,25 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Action ou Vérité</title>
+    <script>
+      // Doit s'exécuter avant tout rendu pour éviter un flash de thème :
+      // même logique de détection que useTheme.jsx (localStorage puis
+      // prefers-color-scheme), mais posée en synchrone sur <html> ici.
+      (function () {
+        try {
+          var stored = localStorage.getItem('tord_theme');
+          var theme =
+            stored === 'light' || stored === 'dark'
+              ? stored
+              : window.matchMedia('(prefers-color-scheme: light)').matches
+                ? 'light'
+                : 'dark';
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { AuthError } from '../auth/errors.js';
-import { validatePseudo, validateEmail, validatePassword, validateLangue } from '../auth/validate.js';
+import { validatePseudo, validateEmail, validatePassword, validateLangue, validateTheme } from '../auth/validate.js';
 import { hashPassword, comparePassword } from '../auth/hash.js';
 import { signToken } from '../auth/token.js';
-import { findUserByEmail, findUserById, createUser, updateUserLangue } from '../auth/repository.js';
+import { findUserByEmail, findUserById, createUser, updateUserLangue, updateUserTheme } from '../auth/repository.js';
 import { requireAuth } from '../auth/middleware.js';
 
 const router = Router();
@@ -14,12 +14,13 @@ router.post('/register', async (req, res, next) => {
     const email = validateEmail(req.body?.email);
     const password = validatePassword(req.body?.password);
     const langue = validateLangue(req.body?.langue);
+    const theme = validateTheme(req.body?.theme);
 
     const passwordHash = await hashPassword(password);
 
     let user;
     try {
-      user = await createUser({ pseudo, email, passwordHash, langue });
+      user = await createUser({ pseudo, email, passwordHash, langue, theme });
     } catch (err) {
       if (err.code === '23505') {
         const field = err.constraint?.includes('pseudo') ? 'pseudo' : 'email';
@@ -33,7 +34,7 @@ router.post('/register', async (req, res, next) => {
     }
 
     const token = signToken(user);
-    res.status(201).json({ token, user: { id: user.id, pseudo: user.pseudo, langue: user.langue } });
+    res.status(201).json({ token, user: { id: user.id, pseudo: user.pseudo, langue: user.langue, theme: user.theme } });
   } catch (err) {
     next(err);
   }
@@ -58,7 +59,7 @@ router.post('/login', async (req, res, next) => {
     }
 
     const token = signToken(user);
-    res.json({ token, user: { id: user.id, pseudo: user.pseudo, langue: user.langue } });
+    res.json({ token, user: { id: user.id, pseudo: user.pseudo, langue: user.langue, theme: user.theme } });
   } catch (err) {
     next(err);
   }
@@ -66,13 +67,14 @@ router.post('/login', async (req, res, next) => {
 
 router.get('/me', requireAuth, async (req, res, next) => {
   try {
-    // La langue peut avoir changé depuis l'émission du token (jusqu'à 30 jours) :
-    // on la relit toujours depuis la base plutôt que de faire confiance au JWT.
+    // La langue et le thème peuvent avoir changé depuis l'émission du token
+    // (jusqu'à 30 jours) : on les relit toujours depuis la base plutôt que de
+    // faire confiance au JWT.
     const user = await findUserById(req.user.id);
     if (!user) {
       throw new AuthError('UNAUTHORIZED', 'Utilisateur introuvable', 401);
     }
-    res.json({ user: { id: user.id, pseudo: user.pseudo, langue: user.langue } });
+    res.json({ user: { id: user.id, pseudo: user.pseudo, langue: user.langue, theme: user.theme } });
   } catch (err) {
     next(err);
   }
@@ -83,6 +85,16 @@ router.post('/langue', requireAuth, async (req, res, next) => {
     const langue = validateLangue(req.body?.langue);
     await updateUserLangue(req.user.id, langue);
     res.json({ langue });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/theme', requireAuth, async (req, res, next) => {
+  try {
+    const theme = validateTheme(req.body?.theme);
+    await updateUserTheme(req.user.id, theme);
+    res.json({ theme });
   } catch (err) {
     next(err);
   }

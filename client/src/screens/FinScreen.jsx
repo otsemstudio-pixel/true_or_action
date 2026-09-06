@@ -21,6 +21,8 @@ function FinScreen() {
   const [recapOpen, setRecapOpen] = useState(false);
 
   const ranking = room.ranking ?? [];
+  const winner = ranking[0];
+  const winnerPlayer = winner ? room.players.find((p) => p.id === winner.playerId) : null;
 
   const handleRestart = async () => {
     setError(null);
@@ -42,29 +44,41 @@ function FinScreen() {
 
       <ErrorBanner>{error}</ErrorBanner>
 
-      <ol className="ranking-list">
-        {ranking.map((r, index) => {
-          const player = room.players.find((p) => p.id === r.playerId);
-          return (
-            <li
-              key={r.playerId}
-              className={`ranking-row${index === 0 ? ' ranking-row--winner' : ''}`}
-            >
-              <span className="ranking-position">{MEDALS[index] ?? index + 1}</span>
-              <span className="ranking-name">{player?.pseudo ?? '—'}</span>
-              <span className="ranking-score">{r.score}</span>
-            </li>
-          );
-        })}
-        {ranking.length === 0 && <p className="menu-item-hint">{t('fin.classementIndisponible')}</p>}
-      </ol>
+      {winner ? (
+        <>
+          <div className="fin-winner">
+            <span className="fin-winner-medal" aria-hidden="true">
+              🥇
+            </span>
+            <span className="fin-winner-name">{winnerPlayer?.pseudo ?? '—'}</span>
+            <span className="fin-winner-score">{winner.score}</span>
+          </div>
+
+          {ranking.length > 1 && (
+            <ol className="ranking-list">
+              {ranking.slice(1).map((r, index) => {
+                const player = room.players.find((p) => p.id === r.playerId);
+                return (
+                  <li key={r.playerId} className="ranking-row">
+                    <span className="ranking-position">{MEDALS[index + 1] ?? index + 2}</span>
+                    <span className="ranking-name">{player?.pseudo ?? '—'}</span>
+                    <span className="ranking-score">{r.score}</span>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </>
+      ) : (
+        <p className="menu-item-hint">{t('fin.classementIndisponible')}</p>
+      )}
 
       <Button variant="ghost" block onClick={() => setRecapOpen(true)}>
         {t('partie.recapitulatif')}
       </Button>
 
       {isHost ? (
-        <Button block busy={busy} onClick={handleRestart}>
+        <Button variant="dark" block arrow busy={busy} onClick={handleRestart}>
           {t('fin.rejouer')}
         </Button>
       ) : (

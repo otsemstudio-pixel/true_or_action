@@ -6,15 +6,19 @@ function Timer({ deadline, totalSeconds }) {
   const remaining = useCountdown(deadline);
   if (!deadline) return null;
 
-  const fraction = totalSeconds ? Math.min(1, remaining / totalSeconds) : 0;
+  const fraction = totalSeconds ? Math.min(1, Math.max(0, remaining / totalSeconds)) : 0;
   const low = remaining <= 10;
 
   return (
-    <div className={`timer${low ? ' timer--low' : ''}`} role="timer">
-      <div className="timer-bar">
-        <div className="timer-bar-fill" style={{ transform: `scaleX(${fraction})` }} />
-      </div>
-      <span className="timer-value">{t('commun.secondesRestantes', { count: remaining })}</span>
+    <div
+      className={`timer${low ? ' timer--low' : ''}`}
+      role="timer"
+      style={{ '--timer-progress': `${fraction * 100}%` }}
+    >
+      <span className="timer-value" aria-hidden="true">
+        {remaining}
+      </span>
+      <span className="sr-only">{t('commun.secondesRestantes', { count: remaining })}</span>
     </div>
   );
 }

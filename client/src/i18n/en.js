@@ -12,6 +12,8 @@ export default {
     secondesRestantes: '{{count}}s',
     pointsGagnes: '+{{points}}',
     fermer: 'Close',
+    themeClair: 'Light theme',
+    themeSombre: 'Dark theme',
   },
 
   accueil: {
@@ -42,6 +44,7 @@ export default {
   },
 
   salon: {
+    codeLabel: 'Room code',
     joueurs: 'Players ({{count}}/{{max}})',
     encoreJoueurs: {
       one: '{{count}} more player needed to start.',

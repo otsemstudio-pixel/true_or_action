@@ -110,6 +110,7 @@ function SalonAttenteScreen() {
   return (
     <div className="screen">
       <div className="room-code">
+        <span className="room-code-label">{t('salon.codeLabel')}</span>
         <span className="room-code-value">{room.code}</span>
         <Button variant="ghost" onClick={handleCopy}>
           {copied ? t('commun.copie') : t('commun.copier')}
@@ -128,6 +129,9 @@ function SalonAttenteScreen() {
           {room.players.map((p) => (
             <li key={p.id} className="player-row">
               <span className="player-name">
+                <span className="player-avatar" aria-hidden="true">
+                  {p.pseudo.charAt(0).toUpperCase()}
+                </span>
                 <span className={`status-dot${p.status !== 'active' ? ' status-dot--disconnected' : ''}`} />
                 {p.pseudo}
               </span>
@@ -242,7 +246,7 @@ function SalonAttenteScreen() {
       </div>
 
       {isHost ? (
-        <Button block busy={busy} disabled={!canStart} onClick={handleStart}>
+        <Button variant="dark" block arrow busy={busy} disabled={!canStart} onClick={handleStart}>
           {t('salon.lancerLaPartie')}
         </Button>
       ) : (

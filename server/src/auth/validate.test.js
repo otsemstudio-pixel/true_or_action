@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { validatePseudo, validateEmail, validatePassword, validateLangue } from './validate.js';
+import { validatePseudo, validateEmail, validatePassword, validateLangue, validateTheme } from './validate.js';
 
 describe('validatePseudo', () => {
   test('accepte un pseudo valide', () => {
@@ -49,5 +49,21 @@ describe('validateLangue', () => {
 
   test('refuse une langue non supportée', () => {
     assert.throws(() => validateLangue('de'), (err) => err.code === 'INVALID_LANGUE');
+  });
+});
+
+describe('validateTheme', () => {
+  test('accepte light et dark', () => {
+    assert.equal(validateTheme('light'), 'light');
+    assert.equal(validateTheme('dark'), 'dark');
+  });
+
+  test('retombe sur dark par défaut si absent', () => {
+    assert.equal(validateTheme(undefined), 'dark');
+    assert.equal(validateTheme(null), 'dark');
+  });
+
+  test('refuse un thème non supporté', () => {
+    assert.throws(() => validateTheme('sepia'), (err) => err.code === 'INVALID_THEME');
   });
 });

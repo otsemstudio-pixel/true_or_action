@@ -25,10 +25,10 @@ async function request(path, options = {}) {
   return data;
 }
 
-export function register({ pseudo, email, password, langue }) {
+export function register({ pseudo, email, password, langue, theme }) {
   return request('/api/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ pseudo, email, password, langue }),
+    body: JSON.stringify({ pseudo, email, password, langue, theme }),
   });
 }
 
@@ -50,5 +50,13 @@ export function updateLangue(token, langue) {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify({ langue }),
+  });
+}
+
+export function updateTheme(token, theme) {
+  return request('/api/auth/theme', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ theme }),
   });
 }

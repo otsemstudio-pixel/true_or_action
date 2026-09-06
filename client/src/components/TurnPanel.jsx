@@ -29,7 +29,7 @@ function TurnPanel({ turn, players, myId, onSubmitAnswer }) {
 
   if (!turn) {
     return (
-      <div className="card turn-panel">
+      <div className="turn-panel">
         <p>{t('partie.preparationDuTour')}</p>
       </div>
     );
@@ -53,7 +53,7 @@ function TurnPanel({ turn, players, myId, onSubmitAnswer }) {
   };
 
   return (
-    <div className="card turn-panel">
+    <div className={`turn-panel turn-panel--${turn.type}`}>
       <div className="turn-panel-header">
         <span className={`badge-type badge-type--${turn.type}`}>
           {turn.type === 'verite' ? t('partie.verite') : t('partie.action')}
@@ -77,7 +77,7 @@ function TurnPanel({ turn, players, myId, onSubmitAnswer }) {
               rows={3}
               autoFocus
             />
-            <Button type="submit" block busy={busy} disabled={!text.trim()}>
+            <Button type="submit" variant="dark" block arrow busy={busy} disabled={!text.trim()}>
               {t('commun.envoyer')}
             </Button>
           </form>
