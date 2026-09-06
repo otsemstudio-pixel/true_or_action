@@ -69,7 +69,7 @@ function TurnPanel({ turn, players, myId, onSubmitAnswer, onVote }) {
         {turn.phase === 'voting' && <Timer deadline={turn.voteDeadline} totalSeconds={VOTE_SECONDS} />}
       </div>
 
-      <p className="turn-question">{turn.contenu ?? '…'}</p>
+      <p className="turn-question">{turn.contenu ?? 'Question indisponible pour ce tour.'}</p>
 
       <ErrorBanner>{error}</ErrorBanner>
 

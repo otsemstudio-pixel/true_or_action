@@ -83,6 +83,9 @@ export function RoomProvider({ children }) {
     function onGameStarted({ snapshot }) {
       setRoom(snapshotToState(snapshot));
     }
+    function onGameRestarted({ snapshot }) {
+      setRoom({ ...snapshotToState(snapshot), lastResult: null, ranking: null });
+    }
     function onTurnStarted(payload) {
       setRoom((prev) => ({
         ...prev,
@@ -154,6 +157,7 @@ export function RoomProvider({ children }) {
     socket.on('room:players', onPlayers);
     socket.on('room:settings', onSettings);
     socket.on('game:started', onGameStarted);
+    socket.on('game:restarted', onGameRestarted);
     socket.on('turn:started', onTurnStarted);
     socket.on('turn:answered', onTurnAnswered);
     socket.on('turn:voted', onTurnVoted);
@@ -166,6 +170,7 @@ export function RoomProvider({ children }) {
       socket.off('room:players', onPlayers);
       socket.off('room:settings', onSettings);
       socket.off('game:started', onGameStarted);
+      socket.off('game:restarted', onGameRestarted);
       socket.off('turn:started', onTurnStarted);
       socket.off('turn:answered', onTurnAnswered);
       socket.off('turn:voted', onTurnVoted);
@@ -203,6 +208,8 @@ export function RoomProvider({ children }) {
 
   const startGame = useCallback(() => emitWithAck('game:start', {}), []);
 
+  const restartGame = useCallback(() => emitWithAck('game:rematch', {}), []);
+
   const sendAnswer = useCallback((text) => emitWithAck('turn:answer', { text }), []);
 
   const sendVote = useCallback((vote) => emitWithAck('turn:vote', { vote }), []);
@@ -218,6 +225,7 @@ export function RoomProvider({ children }) {
         leaveRoom,
         updateRoomSettings,
         startGame,
+        restartGame,
         sendAnswer,
         sendVote,
         sendChat,

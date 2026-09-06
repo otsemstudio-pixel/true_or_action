@@ -6,6 +6,7 @@ import {
   updateSettings,
   addPlayer,
   removePlayer,
+  restartRoom,
   markDisconnected,
   markReconnected,
   excludePlayer,
@@ -242,6 +243,21 @@ export function registerSocketHandlers(io) {
         entry.room = updateSettings(entry.room, { maxTurns, targetScore });
         io.to(entry.room.code).emit('room:settings', { settings: entry.room.settings });
         ack?.({ ok: true, settings: entry.room.settings });
+      } catch (err) {
+        ack?.(errorResponse(err));
+      }
+    });
+
+    socket.on('game:rematch', (_, ack) => {
+      try {
+        const entry = requireEntry(socket);
+        if (entry.room.hostId !== socket.data.playerId) {
+          throw new GameError('NOT_HOST', "Seul l'hôte peut relancer une partie");
+        }
+        entry.room = restartRoom(entry.room);
+        clearAllTimers(entry);
+        io.to(entry.room.code).emit('game:restarted', { snapshot: buildSnapshot(entry) });
+        ack?.({ ok: true });
       } catch (err) {
         ack?.(errorResponse(err));
       }

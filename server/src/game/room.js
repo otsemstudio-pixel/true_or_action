@@ -58,7 +58,7 @@ export function addPlayer(room, { id, pseudo }) {
 }
 
 export function removePlayer(room, playerId) {
-  if (room.status !== 'waiting') {
+  if (room.status === 'playing') {
     throw new GameError('ROOM_NOT_JOINABLE', 'Impossible de quitter une partie en cours');
   }
 
@@ -68,6 +68,24 @@ export function removePlayer(room, playerId) {
   const hostId = room.hostId === playerId && players.length > 0 ? players[0].id : room.hostId;
 
   return { ...room, players, hostId };
+}
+
+export function restartRoom(room) {
+  if (room.status !== 'finished') {
+    throw new GameError('ROOM_NOT_FINISHED', "La partie n'est pas terminée");
+  }
+
+  return {
+    ...room,
+    status: 'waiting',
+    players: room.players.filter((p) => p.status !== 'left').map((p) => ({ ...p, score: 0 })),
+    turnOrder: [],
+    currentTurnIndex: -1,
+    turnNumber: 0,
+    questionPool: { verite: [], action: [] },
+    currentTurn: null,
+    history: [],
+  };
 }
 
 export function markDisconnected(room, playerId) {

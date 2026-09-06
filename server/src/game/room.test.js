@@ -5,6 +5,7 @@ import {
   updateSettings,
   addPlayer,
   removePlayer,
+  restartRoom,
   markDisconnected,
   markReconnected,
   excludePlayer,
@@ -90,6 +91,52 @@ describe('removePlayer', () => {
     room = removePlayer(room, 'p1');
     assert.equal(room.players.length, 1);
     assert.equal(room.hostId, 'p2');
+  });
+
+  test('refuse de quitter une partie en cours', () => {
+    const room = { ...baseRoom(), status: 'playing' };
+    assert.throws(() => removePlayer(room, 'p1'), (err) => err.code === 'ROOM_NOT_JOINABLE');
+  });
+
+  test('autorise à quitter une partie terminée', () => {
+    const room = { ...baseRoom(), status: 'finished' };
+    const result = removePlayer(room, 'p1');
+    assert.equal(result.players.length, 0);
+  });
+});
+
+describe('restartRoom', () => {
+  test('remet le salon en attente avec les scores à zéro', () => {
+    let room = addPlayer(baseRoom(), { id: 'p2', pseudo: 'B' });
+    room = {
+      ...room,
+      status: 'finished',
+      players: room.players.map((p) => ({ ...p, score: 42 })),
+      turnNumber: 5,
+      history: [{ turnNumber: 1 }],
+    };
+
+    const restarted = restartRoom(room);
+    assert.equal(restarted.status, 'waiting');
+    assert.equal(restarted.turnNumber, 0);
+    assert.deepEqual(restarted.history, []);
+    assert.equal(restarted.currentTurn, null);
+    assert.ok(restarted.players.every((p) => p.score === 0));
+  });
+
+  test('retire les joueurs ayant quitté (left)', () => {
+    let room = addPlayer(baseRoom(), { id: 'p2', pseudo: 'B' });
+    room = {
+      ...room,
+      status: 'finished',
+      players: [room.players[0], { ...room.players[1], status: 'left' }],
+    };
+    const restarted = restartRoom(room);
+    assert.equal(restarted.players.length, 1);
+  });
+
+  test('refuse si la partie n\'est pas terminée', () => {
+    assert.throws(() => restartRoom(baseRoom()), (err) => err.code === 'ROOM_NOT_FINISHED');
   });
 });
 

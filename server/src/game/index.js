@@ -5,6 +5,7 @@ export {
   updateSettings,
   addPlayer,
   removePlayer,
+  restartRoom,
   markDisconnected,
   markReconnected,
   excludePlayer,
