@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { useRoom } from '../hooks/useRoom.jsx';
+import { useI18n } from '../hooks/useI18n.jsx';
+import { translateError } from '../i18n/index.js';
 import Button from '../components/Button.jsx';
 import ErrorBanner from '../components/ErrorBanner.jsx';
 
@@ -9,6 +11,7 @@ const MEDALS = ['🥇', '🥈', '🥉'];
 function FinScreen() {
   const { user } = useAuth();
   const { room, restartGame, leaveRoom } = useRoom();
+  const { t } = useI18n();
   const myId = String(user.id);
   const isHost = room.hostId === myId;
 
@@ -23,7 +26,7 @@ function FinScreen() {
     try {
       await restartGame();
     } catch (err) {
-      setError(err.message);
+      setError(translateError(t, err));
     } finally {
       setBusy(false);
     }
@@ -32,7 +35,7 @@ function FinScreen() {
   return (
     <div className="screen">
       <header>
-        <h1 className="fin-title">Partie terminée</h1>
+        <h1 className="fin-title">{t('fin.partieTerminee')}</h1>
       </header>
 
       <ErrorBanner>{error}</ErrorBanner>
@@ -51,19 +54,19 @@ function FinScreen() {
             </li>
           );
         })}
-        {ranking.length === 0 && <p className="menu-item-hint">Classement indisponible.</p>}
+        {ranking.length === 0 && <p className="menu-item-hint">{t('fin.classementIndisponible')}</p>}
       </ol>
 
       {isHost ? (
         <Button block busy={busy} onClick={handleRestart}>
-          Rejouer
+          {t('fin.rejouer')}
         </Button>
       ) : (
-        <p className="menu-item-hint">En attente que l'hôte relance une partie…</p>
+        <p className="menu-item-hint">{t('fin.enAttenteHoteRelance')}</p>
       )}
 
       <Button variant="danger-ghost" onClick={leaveRoom}>
-        Quitter
+        {t('commun.quitter')}
       </Button>
     </div>
   );

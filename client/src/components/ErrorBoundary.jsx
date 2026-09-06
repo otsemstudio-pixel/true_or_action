@@ -1,4 +1,5 @@
 import { Component } from 'react';
+import { useI18n } from '../hooks/useI18n.jsx';
 
 class ErrorBoundary extends Component {
   state = { hasError: false };
@@ -13,16 +14,14 @@ class ErrorBoundary extends Component {
 
   render() {
     if (this.state.hasError) {
+      const { t } = this.props;
       return (
         <div className="screen screen--centered">
           <div className="card">
-            <h2>Un problème est survenu</h2>
-            <p className="menu-item-hint">
-              Quelque chose s'est mal passé. Rechargez la page pour continuer — votre partie
-              reprendra là où elle en était.
-            </p>
+            <h2>{t('erreurLimite.titre')}</h2>
+            <p className="menu-item-hint">{t('erreurLimite.description')}</p>
             <button type="button" className="btn btn-primary btn-block" onClick={() => window.location.reload()}>
-              Recharger
+              {t('erreurLimite.recharger')}
             </button>
           </div>
         </div>
@@ -33,4 +32,12 @@ class ErrorBoundary extends Component {
   }
 }
 
-export default ErrorBoundary;
+// L'ErrorBoundary de classe ne peut pas appeler useI18n() directement (pas de
+// hooks dans les composants classe) : ce petit wrapper fonctionnel lui fournit
+// `t` via une prop.
+function ErrorBoundaryWithI18n({ children }) {
+  const { t } = useI18n();
+  return <ErrorBoundary t={t}>{children}</ErrorBoundary>;
+}
+
+export default ErrorBoundaryWithI18n;

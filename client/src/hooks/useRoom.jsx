@@ -10,6 +10,7 @@ const initialState = {
   hostId: null,
   settings: null,
   niveauMax: 1,
+  langue: 'fr',
   players: [],
   turnNumber: 0,
   currentTurn: null,
@@ -25,6 +26,7 @@ function snapshotToState(snapshot) {
     hostId: snapshot.hostId,
     settings: snapshot.settings,
     niveauMax: snapshot.niveauMax,
+    langue: snapshot.langue ?? 'fr',
     players: snapshot.players,
     turnNumber: snapshot.turnNumber,
     currentTurn: snapshot.currentTurn,
@@ -36,16 +38,16 @@ function emitWithAck(event, payload) {
   return new Promise((resolve, reject) => {
     const socket = getSocket();
     if (!socket) {
-      reject(new Error('Non connecté au serveur'));
+      reject(Object.assign(new Error('Non connecté au serveur'), { code: 'SOCKET_NOT_CONNECTED' }));
       return;
     }
     socket.timeout(8000).emit(event, payload, (err, response) => {
       if (err) {
-        reject(new Error('Le serveur ne répond pas, réessayez'));
+        reject(Object.assign(new Error('Le serveur ne répond pas, réessayez'), { code: 'SOCKET_TIMEOUT' }));
         return;
       }
       if (!response.ok) {
-        reject(Object.assign(new Error(response.message), { code: response.code }));
+        reject(Object.assign(new Error(response.message), { code: response.code, details: response.details }));
         return;
       }
       resolve(response);
@@ -84,6 +86,9 @@ export function RoomProvider({ children }) {
     }
     function onNiveau({ niveauMax }) {
       setRoom((prev) => (prev.status === 'idle' ? prev : { ...prev, niveauMax }));
+    }
+    function onLangue({ langue }) {
+      setRoom((prev) => (prev.status === 'idle' ? prev : { ...prev, langue }));
     }
     function onGameStarted({ snapshot }) {
       setRoom(snapshotToState(snapshot));
@@ -162,6 +167,7 @@ export function RoomProvider({ children }) {
     socket.on('room:players', onPlayers);
     socket.on('room:settings', onSettings);
     socket.on('room:niveau', onNiveau);
+    socket.on('room:langue', onLangue);
     socket.on('game:started', onGameStarted);
     socket.on('game:restarted', onGameRestarted);
     socket.on('turn:started', onTurnStarted);
@@ -176,6 +182,7 @@ export function RoomProvider({ children }) {
       socket.off('room:players', onPlayers);
       socket.off('room:settings', onSettings);
       socket.off('room:niveau', onNiveau);
+      socket.off('room:langue', onLangue);
       socket.off('game:started', onGameStarted);
       socket.off('game:restarted', onGameRestarted);
       socket.off('turn:started', onTurnStarted);
@@ -219,6 +226,12 @@ export function RoomProvider({ children }) {
     return res;
   }, []);
 
+  const updateRoomLangue = useCallback(async (langue) => {
+    const res = await emitWithAck('room:langue', { langue });
+    setRoom((prev) => ({ ...prev, langue: res.langue }));
+    return res;
+  }, []);
+
   const startGame = useCallback(() => emitWithAck('game:start', {}), []);
 
   const restartGame = useCallback(() => emitWithAck('game:rematch', {}), []);
@@ -238,6 +251,7 @@ export function RoomProvider({ children }) {
         leaveRoom,
         updateRoomSettings,
         updateNiveauMax,
+        updateRoomLangue,
         startGame,
         restartGame,
         sendAnswer,

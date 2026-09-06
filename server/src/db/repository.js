@@ -4,11 +4,11 @@
 
 // --- rooms ---
 
-export async function insertRoom(db, { code, hostId, maxTurns, targetScore, timeoutSec, voteSec }) {
+export async function insertRoom(db, { code, hostId, maxTurns, targetScore, timeoutSec, voteSec, langue }) {
   const res = await db.query(
-    `INSERT INTO rooms (code, host_id, status, max_turns, score_cible, timeout_sec, vote_sec)
-     VALUES ($1, $2, 'waiting', $3, $4, $5, $6) RETURNING id`,
-    [code, hostId, maxTurns, targetScore, timeoutSec, voteSec]
+    `INSERT INTO rooms (code, host_id, status, max_turns, score_cible, timeout_sec, vote_sec, langue)
+     VALUES ($1, $2, 'waiting', $3, $4, $5, $6, $7) RETURNING id`,
+    [code, hostId, maxTurns, targetScore, timeoutSec, voteSec, langue]
   );
   return res.rows[0].id;
 }
@@ -27,6 +27,10 @@ export async function updateRoomHost(db, roomId, hostId) {
 
 export async function updateRoomNiveauMax(db, roomId, niveauMax) {
   await db.query('UPDATE rooms SET niveau_max = $1 WHERE id = $2', [niveauMax, roomId]);
+}
+
+export async function updateRoomLangue(db, roomId, langue) {
+  await db.query('UPDATE rooms SET langue = $1 WHERE id = $2', [langue, roomId]);
 }
 
 export async function updateRoomStatus(db, roomId, status) {
@@ -213,10 +217,10 @@ export async function fetchRecentMessages(db, roomId, limit = 30) {
 // Bucket "top" = niveau exactement égal à niveauMax (le niveau choisi par
 // l'hôte), "lower" = tous les niveaux strictement en dessous. C'est sur ce
 // découpage que game/turn.js applique la pondération 60/40 du tirage.
-export async function fetchQuestionBank(db, { niveauMax = 1 } = {}) {
+export async function fetchQuestionBank(db, { niveauMax = 1, langue = 'fr' } = {}) {
   const res = await db.query(
-    'SELECT id, type, contenu, niveau FROM questions WHERE is_public = true AND niveau <= $1',
-    [niveauMax]
+    'SELECT id, type, contenu, niveau FROM questions WHERE is_public = true AND niveau <= $1 AND langue = $2',
+    [niveauMax, langue]
   );
 
   const questionPool = {

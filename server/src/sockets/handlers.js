@@ -5,6 +5,7 @@ import {
   createRoom,
   updateSettings,
   updateNiveauMax,
+  updateLangue,
   addPlayer,
   removePlayer,
   restartRoom,
@@ -204,12 +205,19 @@ export function registerSocketHandlers(io) {
   io.on('connection', (socket) => {
     socket.on('room:create', async (payload, ack) => {
       try {
-        const { maxTurns = null, targetScore = null } = payload ?? {};
+        const { maxTurns = null, targetScore = null, langue = 'fr' } = payload ?? {};
         const hostIdNum = Number(socket.data.playerId);
 
         // Valide les réglages avant de toucher la base (résultat jeté, on ne
         // veut que l'erreur éventuelle).
-        createRoom({ code: '000000', hostId: socket.data.playerId, hostPseudo: socket.data.pseudo, maxTurns, targetScore });
+        createRoom({
+          code: '000000',
+          hostId: socket.data.playerId,
+          hostPseudo: socket.data.pseudo,
+          maxTurns,
+          targetScore,
+          langue,
+        });
 
         let code;
         let dbRoomId;
@@ -224,6 +232,7 @@ export function registerSocketHandlers(io) {
                 targetScore,
                 timeoutSec: TIMERS.answerMs / 1000,
                 voteSec: TIMERS.voteMs / 1000,
+                langue,
               });
               await repo.insertRoomPlayer(client, id, hostIdNum);
               return id;
@@ -241,6 +250,7 @@ export function registerSocketHandlers(io) {
           hostPseudo: socket.data.pseudo,
           maxTurns,
           targetScore,
+          langue,
         });
         const entry = createRoomEntry(room);
         entry.dbRoomId = dbRoomId;
@@ -393,6 +403,26 @@ export function registerSocketHandlers(io) {
       }
     });
 
+    socket.on('room:langue', async (payload, ack) => {
+      try {
+        const entry = requireEntry(socket);
+        if (entry.room.hostId !== socket.data.playerId) {
+          throw new GameError('NOT_HOST', "Seul l'hôte peut modifier la langue des questions");
+        }
+        const { langue } = payload ?? {};
+        await runExclusive(entry, async () => {
+          const updatedRoom = updateLangue(entry.room, langue);
+          await repo.updateRoomLangue(pool, entry.dbRoomId, langue);
+          entry.room = updatedRoom;
+        });
+
+        io.to(entry.room.code).emit('room:langue', { langue: entry.room.langue });
+        ack?.({ ok: true, langue: entry.room.langue });
+      } catch (err) {
+        ack?.(errorResponse(err));
+      }
+    });
+
     socket.on('game:rematch', async (_, ack) => {
       try {
         const entry = requireEntry(socket);
@@ -429,7 +459,10 @@ export function registerSocketHandlers(io) {
         }
 
         const enriched = await runExclusive(entry, async () => {
-          const { questionPool, byId } = await repo.fetchQuestionBank(pool, { niveauMax: entry.room.niveauMax });
+          const { questionPool, byId } = await repo.fetchQuestionBank(pool, {
+            niveauMax: entry.room.niveauMax,
+            langue: entry.room.langue,
+          });
           const { room, effects } = startGame(entry.room, { questionPool });
           const effectsEnriched = enrichEffects(effects);
 

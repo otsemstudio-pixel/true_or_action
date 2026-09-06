@@ -4,6 +4,7 @@ import {
   createRoom,
   updateSettings,
   updateNiveauMax,
+  updateLangue,
   addPlayer,
   removePlayer,
   restartRoom,
@@ -43,6 +44,38 @@ describe('createRoom', () => {
       () => createRoom({ code: 'ABCD', hostId: 'p1', hostPseudo: 'Hôte', maxTurns: 5, niveauMax: 4 }),
       (err) => err.code === 'INVALID_NIVEAU'
     );
+  });
+
+  test('langue fr par défaut', () => {
+    assert.equal(baseRoom().langue, 'fr');
+  });
+
+  test('accepte la langue en à la création', () => {
+    const room = createRoom({ code: 'ABCD', hostId: 'p1', hostPseudo: 'Hôte', maxTurns: 5, langue: 'en' });
+    assert.equal(room.langue, 'en');
+  });
+
+  test('rejette une langue invalide', () => {
+    assert.throws(
+      () => createRoom({ code: 'ABCD', hostId: 'p1', hostPseudo: 'Hôte', maxTurns: 5, langue: 'de' }),
+      (err) => err.code === 'INVALID_LANGUE'
+    );
+  });
+});
+
+describe('updateLangue', () => {
+  test('change la langue tant que le salon attend', () => {
+    const room = updateLangue(baseRoom(), 'en');
+    assert.equal(room.langue, 'en');
+  });
+
+  test('refuse une langue hors fr/en', () => {
+    assert.throws(() => updateLangue(baseRoom(), 'de'), (err) => err.code === 'INVALID_LANGUE');
+  });
+
+  test('refuse après le lancement de la partie', () => {
+    const room = { ...baseRoom(), status: 'playing' };
+    assert.throws(() => updateLangue(room, 'en'), (err) => err.code === 'ROOM_NOT_JOINABLE');
   });
 });
 

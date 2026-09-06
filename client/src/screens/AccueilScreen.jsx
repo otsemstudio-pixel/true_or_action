@@ -1,13 +1,17 @@
 import { useState } from 'react';
 import { useAuth } from '../hooks/useAuth.jsx';
+import { useI18n } from '../hooks/useI18n.jsx';
+import { translateError } from '../i18n/index.js';
 import TextField from '../components/TextField.jsx';
 import Button from '../components/Button.jsx';
 import ErrorBanner from '../components/ErrorBanner.jsx';
+import LangueSelector from '../components/LangueSelector.jsx';
 
 const EMPTY_FORM = { pseudo: '', email: '', password: '' };
 
 function AccueilScreen() {
   const { register, login } = useAuth();
+  const { t } = useI18n();
   const [mode, setMode] = useState('login');
   const [form, setForm] = useState(EMPTY_FORM);
   const [error, setError] = useState(null);
@@ -26,7 +30,7 @@ function AccueilScreen() {
         await login({ email: form.email, password: form.password });
       }
     } catch (err) {
-      setError(err.message);
+      setError(translateError(t, err));
     } finally {
       setBusy(false);
     }
@@ -39,20 +43,22 @@ function AccueilScreen() {
 
   return (
     <div className="screen screen--centered">
+      <LangueSelector />
+
       <header>
         <h1 className="logo">
-          <span className="logo-action">Action</span>
-          <span className="logo-sep">ou</span>
-          <span className="logo-verite">Vérité</span>
+          <span className="logo-action">{t('accueil.logoAction')}</span>
+          <span className="logo-sep">{t('accueil.logoSep')}</span>
+          <span className="logo-verite">{t('accueil.logoVerite')}</span>
         </h1>
-        <p className="tagline">Salons privés, en temps réel, entre amis.</p>
+        <p className="tagline">{t('accueil.tagline')}</p>
       </header>
 
       <form className="card" onSubmit={handleSubmit}>
         {mode === 'register' && (
           <TextField
             id="pseudo"
-            label="Pseudo"
+            label={t('accueil.pseudo')}
             autoComplete="nickname"
             value={form.pseudo}
             onChange={setField('pseudo')}
@@ -61,7 +67,7 @@ function AccueilScreen() {
         )}
         <TextField
           id="email"
-          label="Email"
+          label={t('accueil.email')}
           type="email"
           autoComplete="email"
           value={form.email}
@@ -70,7 +76,7 @@ function AccueilScreen() {
         />
         <TextField
           id="password"
-          label="Mot de passe"
+          label={t('accueil.motDePasse')}
           type="password"
           autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
           value={form.password}
@@ -81,14 +87,14 @@ function AccueilScreen() {
         <ErrorBanner>{error}</ErrorBanner>
 
         <Button type="submit" block busy={busy}>
-          {mode === 'register' ? "S'inscrire" : 'Se connecter'}
+          {mode === 'register' ? t('accueil.sInscrire') : t('accueil.seConnecter')}
         </Button>
       </form>
 
       <div className="switch-row">
-        {mode === 'register' ? 'Déjà un compte ?' : 'Pas encore de compte ?'}
+        {mode === 'register' ? t('accueil.dejaUnCompte') : t('accueil.pasEncoreDeCompte')}
         <button type="button" className="link-btn" onClick={switchMode}>
-          {mode === 'register' ? 'Se connecter' : "S'inscrire"}
+          {mode === 'register' ? t('accueil.seConnecter') : t('accueil.sInscrire')}
         </button>
       </div>
     </div>

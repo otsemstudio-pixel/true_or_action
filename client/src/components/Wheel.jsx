@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useI18n } from '../hooks/useI18n.jsx';
 
 const SEGMENTS = 8;
 const SEGMENT_ANGLE = 360 / SEGMENTS;
@@ -18,6 +19,7 @@ function pickTargetIndex(type, turnNumber) {
 }
 
 function Wheel({ type, turnNumber }) {
+  const { t } = useI18n();
   const [rotation, setRotation] = useState(0);
   const rotationRef = useRef(0);
   const spunForTurn = useRef(null);
@@ -44,7 +46,7 @@ function Wheel({ type, turnNumber }) {
       <div className="wheel-pointer" aria-hidden="true" />
       <div className="wheel" style={{ transform: `rotate(${rotation}deg)` }} aria-hidden="true" />
       <span className="sr-only">
-        {type ? `Résultat : ${type === 'verite' ? 'Vérité' : 'Action'}` : 'En attente du tirage'}
+        {type ? t('partie.resultat', { type: type === 'verite' ? t('partie.verite') : t('partie.action') }) : t('partie.resultatAttente')}
       </span>
     </div>
   );

@@ -22,6 +22,7 @@ export function buildSnapshot(entry) {
     hostId: room.hostId,
     settings: room.settings,
     niveauMax: room.niveauMax,
+    langue: room.langue,
     players: room.players,
     turnNumber: room.turnNumber,
     currentTurn,

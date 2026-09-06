@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { useRoom } from '../hooks/useRoom.jsx';
+import { useI18n } from '../hooks/useI18n.jsx';
+import { translateError, SUPPORTED_LANGUES, LANGUE_NATIVE_NAMES } from '../i18n/index.js';
 import Button from '../components/Button.jsx';
 import TextField from '../components/TextField.jsx';
 import ErrorBanner from '../components/ErrorBanner.jsx';
-import { NIVEAUX, NIVEAU_LABELS, NIVEAU_DESCRIPTIONS } from '../lib/niveau.js';
+import { NIVEAUX } from '../lib/niveau.js';
 
 const MIN_PLAYERS = 2;
 
@@ -17,9 +19,11 @@ function copyToClipboard(text) {
 
 function SalonAttenteScreen() {
   const { user } = useAuth();
-  const { room, leaveRoom, updateRoomSettings, updateNiveauMax, startGame } = useRoom();
+  const { room, leaveRoom, updateRoomSettings, updateNiveauMax, updateRoomLangue, startGame } = useRoom();
+  const { t } = useI18n();
   const isHost = String(user.id) === room.hostId;
   const [niveauBusy, setNiveauBusy] = useState(false);
+  const [langueBusy, setLangueBusy] = useState(false);
 
   // Champs d'édition locaux à l'hôte : initialisés une fois depuis les réglages du
   // salon, puis pilotés uniquement par la saisie locale. Les réglages de room ne
@@ -43,7 +47,7 @@ function SalonAttenteScreen() {
         await updateRoomSettings({ maxTurns: null, targetScore: value });
       }
     } catch (err) {
-      setError(err.message);
+      setError(translateError(t, err));
     }
   };
 
@@ -59,9 +63,22 @@ function SalonAttenteScreen() {
     try {
       await updateNiveauMax(niveau);
     } catch (err) {
-      setError(err.message);
+      setError(translateError(t, err));
     } finally {
       setNiveauBusy(false);
+    }
+  };
+
+  const handleLangueChange = async (langue) => {
+    if (langue === room.langue) return;
+    setError(null);
+    setLangueBusy(true);
+    try {
+      await updateRoomLangue(langue);
+    } catch (err) {
+      setError(translateError(t, err));
+    } finally {
+      setLangueBusy(false);
     }
   };
 
@@ -71,7 +88,7 @@ function SalonAttenteScreen() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      setError("Impossible de copier automatiquement, notez le code manuellement.");
+      setError(t('salon.copieImpossible'));
     }
   };
 
@@ -81,7 +98,7 @@ function SalonAttenteScreen() {
     try {
       await startGame();
     } catch (err) {
-      setError(err.message);
+      setError(translateError(t, err));
     } finally {
       setBusy(false);
     }
@@ -92,14 +109,14 @@ function SalonAttenteScreen() {
       <div className="room-code">
         <span className="room-code-value">{room.code}</span>
         <Button variant="ghost" onClick={handleCopy}>
-          {copied ? 'Copié !' : 'Copier'}
+          {copied ? t('commun.copie') : t('commun.copier')}
         </Button>
       </div>
 
       <ErrorBanner>{error}</ErrorBanner>
 
       <div className="card">
-        <h2>Joueurs ({room.players.length}/8)</h2>
+        <h2>{t('salon.joueurs', { count: room.players.length, max: 8 })}</h2>
         <ul className="player-list">
           {room.players.map((p) => (
             <li key={p.id} className="player-row">
@@ -107,19 +124,19 @@ function SalonAttenteScreen() {
                 <span className={`status-dot${p.status !== 'active' ? ' status-dot--disconnected' : ''}`} />
                 {p.pseudo}
               </span>
-              {p.id === room.hostId && <span className="player-badge-host">Hôte</span>}
+              {p.id === room.hostId && <span className="player-badge-host">{t('commun.hote')}</span>}
             </li>
           ))}
         </ul>
         {room.players.length < MIN_PLAYERS && (
           <p className="menu-item-hint">
-            Encore {MIN_PLAYERS - room.players.length} joueur(s) pour pouvoir lancer.
+            {t('salon.encoreJoueurs', { count: MIN_PLAYERS - room.players.length })}
           </p>
         )}
       </div>
 
       <div className="card">
-        <h2>Fin de partie</h2>
+        <h2>{t('salon.finDePartie')}</h2>
         {isHost ? (
           <>
             <div className="settings-mode">
@@ -128,20 +145,20 @@ function SalonAttenteScreen() {
                 className={`btn btn-ghost${mode === 'turns' ? ' btn-mode-active' : ''}`}
                 onClick={() => handleModeSwitch('turns')}
               >
-                Tours
+                {t('salon.tours')}
               </button>
               <button
                 type="button"
                 className={`btn btn-ghost${mode === 'score' ? ' btn-mode-active' : ''}`}
                 onClick={() => handleModeSwitch('score')}
               >
-                Score
+                {t('salon.score')}
               </button>
             </div>
             {mode === 'turns' ? (
               <TextField
                 id="max-turns"
-                label="Nombre de tours"
+                label={t('salon.nombreDeTours')}
                 type="number"
                 min={1}
                 max={50}
@@ -152,7 +169,7 @@ function SalonAttenteScreen() {
             ) : (
               <TextField
                 id="target-score"
-                label="Score cible"
+                label={t('salon.scoreCible')}
                 type="number"
                 min={1}
                 max={200}
@@ -165,14 +182,14 @@ function SalonAttenteScreen() {
         ) : (
           <p>
             {room.settings?.targetScore != null
-              ? `Score cible : ${room.settings.targetScore} points`
-              : `${room.settings?.maxTurns ?? '—'} tours`}
+              ? t('salon.scoreCibleAffiche', { score: room.settings.targetScore })
+              : t('salon.toursAffiche', { count: room.settings?.maxTurns ?? 0 })}
           </p>
         )}
       </div>
 
       <div className="card">
-        <h2>Niveau des questions</h2>
+        <h2>{t('salon.niveauDesQuestions')}</h2>
         {isHost ? (
           <>
             <div className="settings-mode settings-mode--niveau">
@@ -184,30 +201,49 @@ function SalonAttenteScreen() {
                   disabled={niveauBusy}
                   onClick={() => handleNiveauChange(niveau)}
                 >
-                  {NIVEAU_LABELS[niveau]}
+                  {t(`niveau.label.${niveau}`)}
                 </button>
               ))}
             </div>
-            <p className="menu-item-hint">{NIVEAU_DESCRIPTIONS[room.niveauMax]}</p>
+            <p className="menu-item-hint">{t(`niveau.description.${room.niveauMax}`)}</p>
           </>
         ) : (
           <>
-            <p>{NIVEAU_LABELS[room.niveauMax]}</p>
-            <p className="menu-item-hint">{NIVEAU_DESCRIPTIONS[room.niveauMax]}</p>
+            <p>{t(`niveau.label.${room.niveauMax}`)}</p>
+            <p className="menu-item-hint">{t(`niveau.description.${room.niveauMax}`)}</p>
           </>
+        )}
+
+        <h2>{t('salon.langueDesQuestions')}</h2>
+        {isHost ? (
+          <div className="settings-mode settings-mode--langue">
+            {SUPPORTED_LANGUES.map((code) => (
+              <button
+                key={code}
+                type="button"
+                className={`btn btn-ghost${room.langue === code ? ' btn-mode-active' : ''}`}
+                disabled={langueBusy}
+                onClick={() => handleLangueChange(code)}
+              >
+                {LANGUE_NATIVE_NAMES[code]}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p>{LANGUE_NATIVE_NAMES[room.langue]}</p>
         )}
       </div>
 
       {isHost ? (
         <Button block busy={busy} disabled={!canStart} onClick={handleStart}>
-          Lancer la partie
+          {t('salon.lancerLaPartie')}
         </Button>
       ) : (
-        <p className="menu-item-hint">En attente que l'hôte lance la partie…</p>
+        <p className="menu-item-hint">{t('salon.enAttenteHoteLance')}</p>
       )}
 
       <Button variant="danger-ghost" onClick={leaveRoom}>
-        Quitter le salon
+        {t('salon.quitterLeSalon')}
       </Button>
     </div>
   );

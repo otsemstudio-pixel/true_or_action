@@ -1,6 +1,8 @@
 import { useCountdown } from '../hooks/useCountdown.js';
+import { useI18n } from '../hooks/useI18n.jsx';
 
 function Timer({ deadline, totalSeconds }) {
+  const { t } = useI18n();
   const remaining = useCountdown(deadline);
   if (!deadline) return null;
 
@@ -12,7 +14,7 @@ function Timer({ deadline, totalSeconds }) {
       <div className="timer-bar">
         <div className="timer-bar-fill" style={{ transform: `scaleX(${fraction})` }} />
       </div>
-      <span className="timer-value">{remaining}s</span>
+      <span className="timer-value">{t('commun.secondesRestantes', { count: remaining })}</span>
     </div>
   );
 }

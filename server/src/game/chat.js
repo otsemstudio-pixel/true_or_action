@@ -7,7 +7,9 @@ export function validateMessageText(text) {
     throw new GameError('EMPTY_MESSAGE', 'Le message ne peut pas être vide');
   }
   if (trimmed.length > CHAT.maxLength) {
-    throw new GameError('MESSAGE_TOO_LONG', `Le message dépasse ${CHAT.maxLength} caractères`);
+    throw new GameError('MESSAGE_TOO_LONG', `Le message dépasse ${CHAT.maxLength} caractères`, {
+      maxLength: CHAT.maxLength,
+    });
   }
   return trimmed;
 }

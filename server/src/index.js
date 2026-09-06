@@ -26,7 +26,7 @@ app.use('/api/auth', authRouter);
 
 app.use((err, req, res, next) => {
   if (err.name === 'AuthError') {
-    return res.status(err.status || 400).json({ code: err.code, message: err.message });
+    return res.status(err.status || 400).json({ code: err.code, message: err.message, details: err.details });
   }
   console.error('Erreur HTTP inattendue:', err.code || err.name || 'erreur inconnue');
   res.status(500).json({ code: 'INTERNAL_ERROR', message: 'Erreur interne' });

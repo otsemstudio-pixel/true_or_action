@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useI18n } from '../hooks/useI18n.jsx';
 
 const MAX_LENGTH = 300;
 
@@ -8,6 +9,7 @@ function makeClientId() {
 }
 
 function ChatPanel({ messages, myId, onSend }) {
+  const { t } = useI18n();
   const [text, setText] = useState('');
   const [pending, setPending] = useState([]);
   const [error, setError] = useState(null);
@@ -34,7 +36,7 @@ function ChatPanel({ messages, myId, onSend }) {
     } catch (err) {
       setPending((prev) => prev.map((m) => (m.clientId === clientId ? { ...m, status: 'failed' } : m)));
       if (err.code === 'RATE_LIMITED') {
-        setError('Trop de messages envoyés, patiente un instant.');
+        setError(t('chat.tropDeMessages'));
       }
     }
   };
@@ -51,10 +53,10 @@ function ChatPanel({ messages, myId, onSend }) {
 
   return (
     <div className="card chat-panel">
-      <h2>Chat</h2>
+      <h2>{t('chat.titre')}</h2>
       <div className="chat-list" ref={listRef}>
         {messages.length === 0 && pending.length === 0 && (
-          <p className="menu-item-hint">Aucun message pour l'instant.</p>
+          <p className="menu-item-hint">{t('chat.aucunMessage')}</p>
         )}
         {messages.map((m) => (
           <div key={m.id} className={`chat-message${m.playerId === myId ? ' chat-message--mine' : ''}`}>
@@ -65,10 +67,10 @@ function ChatPanel({ messages, myId, onSend }) {
         {pending.map((m) => (
           <div key={m.clientId} className="chat-message chat-message--mine chat-message--pending">
             <span className="chat-message-text">{m.text}</span>
-            {m.status === 'sending' && <span className="chat-message-status">Envoi…</span>}
+            {m.status === 'sending' && <span className="chat-message-status">{t('chat.envoiEnCours')}</span>}
             {m.status === 'failed' && (
               <button type="button" className="link-btn chat-message-retry" onClick={() => retry(m)}>
-                Échec, réessayer
+                {t('chat.echecReessayer')}
               </button>
             )}
           </div>
@@ -82,12 +84,12 @@ function ChatPanel({ messages, myId, onSend }) {
           type="text"
           value={text}
           onChange={(e) => setText(e.target.value.slice(0, MAX_LENGTH))}
-          placeholder="Écrire un message…"
+          placeholder={t('chat.ecrireUnMessage')}
           maxLength={MAX_LENGTH}
-          aria-label="Message"
+          aria-label={t('chat.messageLabel')}
         />
         <button type="submit" className="btn btn-secondary chat-send-btn" disabled={!text.trim()}>
-          Envoyer
+          {t('commun.envoyer')}
         </button>
       </form>
     </div>

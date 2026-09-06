@@ -1,5 +1,6 @@
 import { GameError } from './errors.js';
 import { PLAYERS } from './constants.js';
+import { SUPPORTED_LANGUES } from '../config/langues.js';
 
 const NIVEAUX = [1, 2, 3];
 const EMPTY_QUESTION_POOL = {
@@ -27,7 +28,22 @@ function validateNiveauMax(niveauMax) {
   return niveauMax;
 }
 
-export function createRoom({ code, hostId, hostPseudo, maxTurns = null, targetScore = null, niveauMax = 1 }) {
+function validateLangue(langue) {
+  if (!SUPPORTED_LANGUES.includes(langue)) {
+    throw new GameError('INVALID_LANGUE', 'La langue doit être fr ou en', { allowed: SUPPORTED_LANGUES });
+  }
+  return langue;
+}
+
+export function createRoom({
+  code,
+  hostId,
+  hostPseudo,
+  maxTurns = null,
+  targetScore = null,
+  niveauMax = 1,
+  langue = 'fr',
+}) {
   const settings = validateSettings(maxTurns, targetScore);
 
   return {
@@ -36,6 +52,7 @@ export function createRoom({ code, hostId, hostPseudo, maxTurns = null, targetSc
     status: 'waiting',
     settings,
     niveauMax: validateNiveauMax(niveauMax),
+    langue: validateLangue(langue),
     players: [{ id: hostId, pseudo: hostPseudo, score: 0, status: 'active' }],
     turnOrder: [],
     currentTurnIndex: -1,
@@ -59,6 +76,13 @@ export function updateNiveauMax(room, niveauMax) {
     throw new GameError('ROOM_NOT_JOINABLE', 'Impossible de modifier le niveau après le lancement');
   }
   return { ...room, niveauMax: validateNiveauMax(niveauMax) };
+}
+
+export function updateLangue(room, langue) {
+  if (room.status !== 'waiting') {
+    throw new GameError('ROOM_NOT_JOINABLE', 'Impossible de modifier la langue après le lancement');
+  }
+  return { ...room, langue: validateLangue(langue) };
 }
 
 export function addPlayer(room, { id, pseudo }) {

@@ -10,7 +10,9 @@ function defaultRng() {
 
 export function startGame(room, { questionPool, rng = defaultRng }) {
   if (!canStart(room)) {
-    throw new GameError('CANNOT_START', `Il faut au moins ${PLAYERS.min} joueurs pour lancer la partie`);
+    throw new GameError('CANNOT_START', `Il faut au moins ${PLAYERS.min} joueurs pour lancer la partie`, {
+      min: PLAYERS.min,
+    });
   }
 
   const { maxTurns } = room.settings;
@@ -28,7 +30,7 @@ export function startGame(room, { questionPool, rng = defaultRng }) {
       throw new GameError(
         'NOT_ENOUGH_QUESTIONS',
         `Questions insuffisantes pour ${maxTurns} tours : il manque ${missing.verite} vérité et ${missing.action} action`,
-        { missing }
+        { missing, maxTurns }
       );
     }
   }
@@ -179,7 +181,7 @@ function drawQuestion(pool, type, rng) {
   const hasLower = buckets.lower.length > 0;
 
   if (!hasTop && !hasLower) {
-    throw new GameError('NO_QUESTIONS_LEFT', `Plus de question de type ${type} disponible`);
+    throw new GameError('NO_QUESTIONS_LEFT', `Plus de question de type ${type} disponible`, { type });
   }
 
   const bucketRoll = rng();

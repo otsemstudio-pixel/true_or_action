@@ -52,6 +52,7 @@ export async function loadRoomEntryFromDb(roomRow) {
     : new Set();
   const { questionPool: fullPool, byId: questionsById } = await repo.fetchQuestionBank(pool, {
     niveauMax: roomRow.niveau_max ?? 1,
+    langue: roomRow.langue ?? 'fr',
   });
   const questionPool = {
     verite: {
@@ -70,6 +71,7 @@ export async function loadRoomEntryFromDb(roomRow) {
     status: roomRow.status,
     settings: { maxTurns: roomRow.max_turns, targetScore: roomRow.score_cible },
     niveauMax: roomRow.niveau_max ?? 1,
+    langue: roomRow.langue ?? 'fr',
     players,
     turnOrder,
     currentTurnIndex,

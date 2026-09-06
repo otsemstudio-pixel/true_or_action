@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { validatePseudo, validateEmail, validatePassword } from './validate.js';
+import { validatePseudo, validateEmail, validatePassword, validateLangue } from './validate.js';
 
 describe('validatePseudo', () => {
   test('accepte un pseudo valide', () => {
@@ -33,5 +33,21 @@ describe('validatePassword', () => {
 
   test('refuse moins de 8 caractères', () => {
     assert.throws(() => validatePassword('court1'), (err) => err.code === 'INVALID_PASSWORD');
+  });
+});
+
+describe('validateLangue', () => {
+  test('accepte fr et en', () => {
+    assert.equal(validateLangue('fr'), 'fr');
+    assert.equal(validateLangue('en'), 'en');
+  });
+
+  test('retombe sur fr par défaut si absente', () => {
+    assert.equal(validateLangue(undefined), 'fr');
+    assert.equal(validateLangue(null), 'fr');
+  });
+
+  test('refuse une langue non supportée', () => {
+    assert.throws(() => validateLangue('de'), (err) => err.code === 'INVALID_LANGUE');
   });
 });

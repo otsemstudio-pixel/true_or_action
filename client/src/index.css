@@ -385,9 +385,39 @@ input {
   color: var(--color-verite-ink);
 }
 
-.settings-mode--niveau .btn {
+.settings-mode--niveau .btn,
+.settings-mode--langue .btn {
   font-size: var(--text-xs);
   padding: 0 var(--space-2);
+}
+
+/* Sélecteur de langue */
+
+.langue-selector {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+
+.langue-btn {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  padding: 2px var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.langue-btn--active {
+  background: var(--color-verite);
+  border-color: var(--color-verite);
+  color: var(--color-verite-ink);
+}
+
+.menu-header-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
 }
 
 /* Indicateur de connexion */

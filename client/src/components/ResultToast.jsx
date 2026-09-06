@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
+import { useI18n } from '../hooks/useI18n.jsx';
 
 function ResultToast({ result, players }) {
+  const { t } = useI18n();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -17,7 +19,7 @@ function ResultToast({ result, players }) {
 
   return (
     <div className="result-toast" role="status">
-      {pseudo} gagne {result.points} point{result.points > 1 ? 's' : ''}
+      {t('partie.gagnePoints', { pseudo, points: result.points, count: result.points })}
       {thumbsUp > 0 ? ` (${thumbsUp} 👍)` : ''}
     </div>
   );
