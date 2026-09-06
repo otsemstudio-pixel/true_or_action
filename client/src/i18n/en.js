@@ -114,6 +114,9 @@ export default {
     ecrireUnMessage: 'Write a message…',
     messageLabel: 'Message',
     tropDeMessages: 'Too many messages sent, please wait a moment.',
+    repondre: 'Reply',
+    reponseA: 'Reply to {{pseudo}}',
+    annulerLaReponse: 'Cancel reply',
   },
 
   fin: {
@@ -178,6 +181,7 @@ export default {
     RATE_LIMITED: 'Too many messages sent, please wait a moment.',
     NOT_HOST: 'Only the host can do this.',
     NOT_IN_ROOM: "You aren't in any room.",
+    REPLY_TARGET_NOT_FOUND: 'Quoted message not found.',
     INTERNAL_ERROR: 'Internal error, please try again.',
     AUTH_REQUIRED: 'Authentication required.',
     INVALID_TOKEN: 'Session expired, please log in again.',

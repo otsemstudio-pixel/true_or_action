@@ -66,7 +66,7 @@ function enrichEffects(effects) {
   });
 }
 
-function broadcastEffects(io, entry, effects) {
+function broadcastEffects(io, entry, effects, newAnswerMessage = null) {
   for (const effect of effects) {
     switch (effect.type) {
       case 'TURN_STARTED':
@@ -86,6 +86,12 @@ function broadcastEffects(io, entry, effects) {
           answer: effect.answer,
           voteDeadline: effect.voteDeadline,
         });
+        // La réponse est aussi un message ordinaire (voir persistence.js) :
+        // diffusé via le canal chat existant, pour rester citable comme
+        // n'importe quel autre message.
+        if (newAnswerMessage) {
+          io.to(entry.room.code).emit('chat:new', newAnswerMessage);
+        }
         break;
       case 'VOTE_SUBMITTED':
         io.to(entry.room.code).emit('turn:voted', {
@@ -128,10 +134,16 @@ function broadcastEffects(io, entry, effects) {
 // en cas d'échec, le cache reste sur son ancien état cohérent avec la base.
 export async function applyGameEffects(io, entry, newRoom, effects) {
   const enriched = enrichEffects(effects);
-  const { newTurnDbId } = await withTransaction((client) => persistEffects(client, entry, newRoom, enriched));
+  const { newTurnDbId, newAnswerMessage } = await withTransaction((client) =>
+    persistEffects(client, entry, newRoom, enriched)
+  );
   entry.room = newRoom;
   if (newTurnDbId) entry.currentTurnDbId = newTurnDbId;
-  broadcastEffects(io, entry, enriched);
+  if (newAnswerMessage) {
+    entry.chat.messages.push(newAnswerMessage);
+    if (entry.chat.messages.length > 200) entry.chat.messages.shift();
+  }
+  broadcastEffects(io, entry, enriched, newAnswerMessage);
 }
 
 export async function handleTimerFire(io, entry, name, turnNumber) {
@@ -573,7 +585,20 @@ export function registerSocketHandlers(io) {
           throw new GameError('RATE_LIMITED', 'Trop de messages, patientez un instant');
         }
 
-        const saved = await repo.insertMessage(pool, entry.dbRoomId, Number(socket.data.playerId), trimmed);
+        // Un message cité doit appartenir au même salon : jamais confiance
+        // aveugle dans l'id fourni par le client.
+        const rawReplyToId = payload?.replyToId;
+        let replyTo = null;
+        if (rawReplyToId != null) {
+          replyTo = await repo.fetchMessageForReply(pool, entry.dbRoomId, Number(rawReplyToId));
+          if (!replyTo) {
+            throw new GameError('REPLY_TARGET_NOT_FOUND', 'Message cité introuvable');
+          }
+        }
+
+        const saved = await repo.insertMessage(pool, entry.dbRoomId, Number(socket.data.playerId), trimmed, {
+          replyToId: replyTo?.id ?? null,
+        });
 
         entry.chat.rateLimits.set(
           socket.data.playerId,
@@ -586,6 +611,8 @@ export function registerSocketHandlers(io) {
           pseudo: socket.data.pseudo,
           text: trimmed,
           createdAt: new Date(saved.created_at).getTime(),
+          replyTo,
+          turnInfo: null,
         };
         entry.chat.messages.push(message);
         if (entry.chat.messages.length > 200) entry.chat.messages.shift();

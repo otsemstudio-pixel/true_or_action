@@ -216,19 +216,51 @@ export async function fetchVotesForTurn(db, turnId) {
 
 // --- messages ---
 
-export async function insertMessage(db, roomId, userId, contenu) {
+// `turnId` marque un message comme le bloc de réponse publié automatiquement
+// pour ce tour (plutôt que du texte libre) : même table, même mécanisme de
+// citation (reply_to_id) pour les deux, jamais de branche spéciale ailleurs.
+export async function insertMessage(db, roomId, userId, contenu, { replyToId = null, turnId = null } = {}) {
   const res = await db.query(
-    'INSERT INTO messages (room_id, user_id, contenu) VALUES ($1, $2, $3) RETURNING id, created_at',
-    [roomId, userId, contenu]
+    `INSERT INTO messages (room_id, user_id, contenu, reply_to_id, turn_id)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at`,
+    [roomId, userId, contenu, replyToId, turnId]
   );
   return res.rows[0];
 }
 
+// Un message cité ne peut l'être que s'il appartient au même salon (sécurité :
+// on ne veut pas qu'un client cite un message d'un autre salon par son id).
+export async function fetchMessageForReply(db, roomId, messageId) {
+  const res = await db.query(
+    `SELECT m.id, m.contenu AS text, u.pseudo
+     FROM messages m JOIN users u ON u.id = m.user_id
+     WHERE m.id = $1 AND m.room_id = $2`,
+    [messageId, roomId]
+  );
+  return res.rows[0] ?? null;
+}
+
 export async function fetchRecentMessages(db, roomId, limit = 30) {
   const res = await db.query(
-    `SELECT m.id, m.user_id, m.contenu, m.created_at, u.pseudo
-     FROM messages m JOIN users u ON u.id = m.user_id
-     WHERE m.room_id = $1 ORDER BY m.created_at DESC LIMIT $2`,
+    `SELECT
+       m.id, m.user_id, m.contenu, m.created_at, m.reply_to_id, m.turn_id,
+       u.pseudo,
+       t.numero AS turn_numero, t.points AS turn_points, t.status AS turn_status,
+       q.type AS question_type, q.contenu AS question_contenu,
+       rm.contenu AS reply_contenu, ru.pseudo AS reply_pseudo,
+       COALESCE(v.thumbs_up, 0) AS thumbs_up
+     FROM messages m
+     JOIN users u ON u.id = m.user_id
+     LEFT JOIN turns t ON t.id = m.turn_id
+     LEFT JOIN questions q ON q.id = t.question_id
+     LEFT JOIN messages rm ON rm.id = m.reply_to_id
+     LEFT JOIN users ru ON ru.id = rm.user_id
+     LEFT JOIN LATERAL (
+       SELECT count(*) FILTER (WHERE valeur = 1) AS thumbs_up
+       FROM votes WHERE votes.turn_id = m.turn_id
+     ) v ON m.turn_id IS NOT NULL
+     WHERE m.room_id = $1
+     ORDER BY m.created_at DESC LIMIT $2`,
     [roomId, limit]
   );
   return res.rows.reverse();

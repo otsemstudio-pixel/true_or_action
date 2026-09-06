@@ -20,12 +20,37 @@ export async function persistEffect(client, entry, newRoom, effect) {
       });
       return { newTurnDbId: id };
     }
-    case 'ANSWER_SUBMITTED':
+    case 'ANSWER_SUBMITTED': {
       await repo.updateTurnAnswered(client, entry.currentTurnDbId, {
         reponse: effect.answer,
         voteDeadline: new Date(effect.voteDeadline),
       });
-      return null;
+
+      // La réponse est aussi publiée comme un message ordinaire (turn_id la
+      // marque comme bloc de réponse plutôt que texte libre) : elle obtient
+      // ainsi un vrai id, citable comme n'importe quel message du chat.
+      const pseudo = entry.room.players.find((p) => p.id === effect.playerId)?.pseudo ?? '';
+      const saved = await repo.insertMessage(client, entry.dbRoomId, Number(effect.playerId), effect.answer, {
+        turnId: entry.currentTurnDbId,
+      });
+      const message = {
+        id: saved.id,
+        playerId: effect.playerId,
+        pseudo,
+        text: effect.answer,
+        createdAt: new Date(saved.created_at).getTime(),
+        replyTo: null,
+        turnInfo: {
+          turnNumber: effect.turnNumber,
+          type: entry.room.currentTurn?.type ?? null,
+          contenu: entry.questionsById.get(entry.room.currentTurn?.questionId) ?? null,
+          points: null,
+          resolved: false,
+          thumbsUp: 0,
+        },
+      };
+      return { newAnswerMessage: message };
+    }
     case 'VOTE_SUBMITTED':
       await repo.insertVote(client, entry.currentTurnDbId, Number(effect.voterId), effect.vote);
       return null;
@@ -49,9 +74,11 @@ export async function persistEffect(client, entry, newRoom, effect) {
 
 export async function persistEffects(client, entry, newRoom, effects) {
   let newTurnDbId = null;
+  let newAnswerMessage = null;
   for (const effect of effects) {
     const result = await persistEffect(client, entry, newRoom, effect);
     if (result?.newTurnDbId) newTurnDbId = result.newTurnDbId;
+    if (result?.newAnswerMessage) newAnswerMessage = result.newAnswerMessage;
   }
-  return { newTurnDbId };
+  return { newTurnDbId, newAnswerMessage };
 }

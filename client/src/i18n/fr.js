@@ -114,6 +114,9 @@ export default {
     ecrireUnMessage: 'Écrire un message…',
     messageLabel: 'Message',
     tropDeMessages: 'Trop de messages envoyés, patiente un instant.',
+    repondre: 'Répondre',
+    reponseA: 'Réponse à {{pseudo}}',
+    annulerLaReponse: 'Annuler la réponse',
   },
 
   fin: {
@@ -180,6 +183,7 @@ export default {
     RATE_LIMITED: 'Trop de messages envoyés, patiente un instant.',
     NOT_HOST: "Seul l'hôte peut faire cette action.",
     NOT_IN_ROOM: "Vous n'êtes dans aucun salon.",
+    REPLY_TARGET_NOT_FOUND: 'Message cité introuvable.',
     INTERNAL_ERROR: 'Erreur interne, réessayez.',
     AUTH_REQUIRED: 'Authentification requise.',
     INVALID_TOKEN: 'Session expirée, reconnectez-vous.',

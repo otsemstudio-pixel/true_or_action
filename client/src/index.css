@@ -1056,13 +1056,21 @@ input {
 }
 
 .chat-message {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.chat-message-row {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-2);
-  font-size: var(--text-sm);
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-sm);
+  padding-right: var(--space-6);
 }
 
 .chat-message--mine {
@@ -1094,6 +1102,108 @@ input {
   min-height: auto;
 }
 
+/* Réponse à un message : bouton révélé au survol (desktop), toujours
+   atteignable par appui long sur mobile (voir useLongPress). */
+.message-reply-btn {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-1);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: var(--text-base);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.chat-message:hover .message-reply-btn,
+.answer-card:hover .message-reply-btn,
+.message-reply-btn:focus-visible {
+  opacity: 1;
+}
+
+/* Citation : encadré cliquable qui ramène au message d'origine. */
+.quote-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border-left: 3px solid var(--color-verite);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  cursor: pointer;
+  text-align: left;
+}
+
+.quote-chip-author {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--color-verite);
+}
+
+.quote-chip-text {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  word-break: break-word;
+}
+
+/* Bandeau de composition d'une réponse, au-dessus du champ de saisie */
+.reply-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--color-verite);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+}
+
+.reply-preview-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.reply-preview-author {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--color-verite);
+}
+
+.reply-preview-text {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reply-preview-cancel {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-lg);
+  cursor: pointer;
+}
+
 .chat-form {
   display: flex;
   gap: var(--space-2);
@@ -1122,6 +1232,7 @@ input {
 /* Bloc de réponse (encadré, distinct d'un message de chat) */
 
 .answer-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -1136,6 +1247,7 @@ input {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
+  padding-right: var(--space-6);
 }
 
 .answer-card-author {

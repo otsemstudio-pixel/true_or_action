@@ -39,7 +39,6 @@ function PartieScreen() {
       <div className="partie-chat-col">
         <ChatPanel
           messages={room.messages}
-          answerCards={room.answerCards}
           players={room.players}
           myId={myId}
           currentTurn={room.currentTurn}

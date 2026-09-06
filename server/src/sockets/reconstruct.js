@@ -88,6 +88,17 @@ export async function loadRoomEntryFromDb(roomRow) {
     pseudo: m.pseudo,
     text: m.contenu,
     createdAt: new Date(m.created_at).getTime(),
+    replyTo: m.reply_to_id ? { id: m.reply_to_id, pseudo: m.reply_pseudo, text: m.reply_contenu } : null,
+    turnInfo: m.turn_id
+      ? {
+          turnNumber: m.turn_numero,
+          type: m.question_type,
+          contenu: m.question_contenu,
+          points: m.turn_status === 'done' || m.turn_status === 'timeout' ? m.turn_points : null,
+          resolved: m.turn_status === 'done' || m.turn_status === 'timeout',
+          thumbsUp: Number(m.thumbs_up) || 0,
+        }
+      : null,
   }));
 
   const entry = createRoomEntry(room);

@@ -16,35 +16,14 @@ const initialState = {
   turnNumber: 0,
   currentTurn: null,
   messages: [],
-  answerCards: [],
   lastResult: null,
   ranking: null,
 };
 
-// Si la reconnexion tombe en pleine phase de vote, la réponse du tour en
-// cours est déjà connue (reconstruite depuis la base) : on la matérialise en
-// carte de réponse tout de suite pour ne pas laisser le fil de chat vide en
-// attendant un futur événement qui ne reviendra pas.
-function seedAnswerCards(snapshot) {
-  const turn = snapshot.currentTurn;
-  if (!turn || turn.answer == null) return [];
-  const pseudo = snapshot.players.find((p) => p.id === turn.activePlayerId)?.pseudo ?? '';
-  return [
-    {
-      turnNumber: turn.turnNumber,
-      playerId: turn.activePlayerId,
-      pseudo,
-      type: turn.type,
-      contenu: turn.contenu,
-      answer: turn.answer,
-      phase: turn.phase === 'resolved' ? 'resolved' : 'voting',
-      votes: turn.votes ?? {},
-      points: null,
-      createdAt: Date.now(),
-    },
-  ];
-}
-
+// Un bloc de réponse publié automatiquement est un message comme un autre
+// (voir persistence.js côté serveur, turn_id le distingue via `turnInfo`) :
+// le snapshot les transporte déjà dans `messages`, aucun état séparé à
+// reconstruire ici, ni pour le tour en cours ni pour l'historique.
 function snapshotToState(snapshot) {
   return {
     code: snapshot.code,
@@ -58,7 +37,6 @@ function snapshotToState(snapshot) {
     turnNumber: snapshot.turnNumber,
     currentTurn: snapshot.currentTurn,
     messages: snapshot.messages ?? [],
-    answerCards: seedAnswerCards(snapshot),
   };
 }
 
@@ -145,19 +123,6 @@ export function RoomProvider({ children }) {
     function onTurnAnswered(payload) {
       setRoom((prev) => {
         if (!prev.currentTurn || prev.currentTurn.turnNumber !== payload.turnNumber) return prev;
-        const pseudo = prev.players.find((p) => p.id === payload.playerId)?.pseudo ?? '';
-        const card = {
-          turnNumber: payload.turnNumber,
-          playerId: payload.playerId,
-          pseudo,
-          type: prev.currentTurn.type,
-          contenu: prev.currentTurn.contenu,
-          answer: payload.answer,
-          phase: 'voting',
-          votes: {},
-          points: null,
-          createdAt: Date.now(),
-        };
         return {
           ...prev,
           currentTurn: {
@@ -166,7 +131,6 @@ export function RoomProvider({ children }) {
             answer: payload.answer,
             voteDeadline: payload.voteDeadline,
           },
-          answerCards: [...prev.answerCards.filter((c) => c.turnNumber !== payload.turnNumber), card],
         };
       });
     }
@@ -184,23 +148,14 @@ export function RoomProvider({ children }) {
     }
     function onTurnResolved(payload) {
       setRoom((prev) => {
-        // Le tour peut se résoudre sans jamais avoir déclenché onTurnAnswered
-        // (timeout de réponse) : la carte n'existe pas encore, on la crée ici
-        // à partir de ce qui reste de currentTurn, avec une réponse nulle.
-        const existingCard = prev.answerCards.find((c) => c.turnNumber === payload.turnNumber);
-        const pseudo = prev.players.find((p) => p.id === payload.playerId)?.pseudo ?? '';
-        const resolvedCard = {
-          turnNumber: payload.turnNumber,
-          playerId: payload.playerId,
-          pseudo,
-          type: existingCard?.type ?? prev.currentTurn?.type ?? null,
-          contenu: existingCard?.contenu ?? prev.currentTurn?.contenu ?? null,
-          answer: existingCard?.answer ?? null,
-          phase: 'resolved',
-          votes: payload.votes,
-          points: payload.points,
-          createdAt: existingCard?.createdAt ?? Date.now(),
-        };
+        // Un timeout ne produit jamais de message (rien n'a été répondu) :
+        // seuls les messages déjà marqués pour ce tour sont mis à jour.
+        const thumbsUp = Object.values(payload.votes).filter((v) => v === 'up').length;
+        const messages = prev.messages.map((m) =>
+          m.turnInfo?.turnNumber === payload.turnNumber
+            ? { ...m, turnInfo: { ...m.turnInfo, points: payload.points, resolved: true, thumbsUp } }
+            : m
+        );
         return {
           ...prev,
           players: payload.players,
@@ -214,7 +169,7 @@ export function RoomProvider({ children }) {
             prev.currentTurn && prev.currentTurn.turnNumber === payload.turnNumber
               ? { ...prev.currentTurn, phase: 'resolved' }
               : prev.currentTurn,
-          answerCards: [...prev.answerCards.filter((c) => c.turnNumber !== payload.turnNumber), resolvedCard],
+          messages,
         };
       });
     }
@@ -302,7 +257,10 @@ export function RoomProvider({ children }) {
 
   const sendVote = useCallback((vote) => emitWithAck('turn:vote', { vote }), []);
 
-  const sendChat = useCallback((text, clientId) => emitWithAck('chat:send', { text, clientId }), []);
+  const sendChat = useCallback(
+    (text, clientId, replyToId) => emitWithAck('chat:send', { text, clientId, replyToId: replyToId ?? null }),
+    []
+  );
 
   // Toujours recalculé depuis la base (table turns) côté serveur : ne renvoie
   // jamais de valeur en cache, on rappelle à chaque ouverture du panneau.
