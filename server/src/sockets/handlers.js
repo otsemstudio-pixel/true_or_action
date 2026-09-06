@@ -8,8 +8,10 @@ import {
   updateSettings,
   updateNiveauMax,
   updateMaxPlayers,
+  updateCategorie,
   updateLangue,
   updateRegles,
+  effectiveRegles,
   addPlayer,
   removePlayer,
   restartRoom,
@@ -69,6 +71,10 @@ function broadcastPlayers(io, entry) {
     players: entry.room.players,
     hostId: entry.room.hostId,
   });
+  // Le nombre de joueurs actifs conditionne le pari mutuel (effectiveRegles) :
+  // rediffusé ici pour que l'affichage des règles actives reste à jour à
+  // chaque arrivée/départ, pas seulement quand l'hôte touche aux règles.
+  io.to(entry.room.code).emit('room:regles', { regles: effectiveRegles(entry.room) });
 }
 
 function enrichEffects(effects) {
@@ -589,6 +595,39 @@ export function registerSocketHandlers(io) {
       }
     });
 
+    // Mode couple : catégorie parallèle et exclusive à 'general', verrouillée
+    // à 2 joueurs. Bascule le niveau à sa valeur par défaut et la limite de
+    // joueurs en même temps (voir game/room.js updateCategorie) — les trois
+    // colonnes sont donc réécrites ensemble en base et rediffusées ensemble.
+    socket.on('room:categorie', async (payload, ack) => {
+      try {
+        const entry = requireEntry(socket);
+        if (entry.room.hostId !== socket.data.playerId) {
+          throw new GameError('NOT_HOST', "Seul l'hôte peut modifier la catégorie du salon");
+        }
+        const { categorie } = payload ?? {};
+        await runExclusive(entry, async () => {
+          const updatedRoom = updateCategorie(entry.room, categorie);
+          await repo.updateRoomCategorie(pool, entry.dbRoomId, {
+            categorie: updatedRoom.categorie,
+            maxPlayers: updatedRoom.maxPlayers,
+            niveauMax: updatedRoom.niveauMax,
+          });
+          entry.room = updatedRoom;
+        });
+
+        io.to(entry.room.code).emit('room:categorie', {
+          categorie: entry.room.categorie,
+          maxPlayers: entry.room.maxPlayers,
+          niveauMax: entry.room.niveauMax,
+          regles: effectiveRegles(entry.room),
+        });
+        ack?.({ ok: true, categorie: entry.room.categorie, maxPlayers: entry.room.maxPlayers, niveauMax: entry.room.niveauMax });
+      } catch (err) {
+        ack?.(errorResponse(err));
+      }
+    });
+
     socket.on('room:langue', async (payload, ack) => {
       try {
         const entry = requireEntry(socket);
@@ -624,8 +663,8 @@ export function registerSocketHandlers(io) {
           entry.room = updatedRoom;
         });
 
-        io.to(entry.room.code).emit('room:regles', { regles: entry.room.regles });
-        ack?.({ ok: true, regles: entry.room.regles });
+        io.to(entry.room.code).emit('room:regles', { regles: effectiveRegles(entry.room) });
+        ack?.({ ok: true, regles: effectiveRegles(entry.room) });
       } catch (err) {
         ack?.(errorResponse(err));
       }
@@ -670,14 +709,18 @@ export function registerSocketHandlers(io) {
           const { questionPool, byId } = await repo.fetchQuestionBank(pool, {
             niveauMax: entry.room.niveauMax,
             langue: entry.room.langue,
+            categorie: entry.room.categorie,
           });
 
           // Règle B : le double ou rien pioche dans le niveau juste au-dessus
-          // du salon — jamais tiré tant que la règle n'est pas active.
-          if (entry.room.regles.doubleOuRien && entry.room.niveauMax < 3) {
+          // du salon — jamais tiré tant que la règle n'est pas active, ni en
+          // mode couple (effectiveRegles la masque déjà : pas de niveau
+          // supérieur où piocher dans cette catégorie).
+          if (effectiveRegles(entry.room).doubleOuRien && entry.room.niveauMax < 3) {
             const { questionPool: escaladeBank, byId: escaladeById } = await repo.fetchQuestionBank(pool, {
               niveauMax: entry.room.niveauMax + 1,
               langue: entry.room.langue,
+              categorie: entry.room.categorie,
             });
             questionPool.escalade = { verite: escaladeBank.verite.top, action: escaladeBank.action.top };
             for (const [id, contenu] of escaladeById) byId.set(id, contenu);

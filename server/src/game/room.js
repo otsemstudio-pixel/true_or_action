@@ -1,6 +1,7 @@
 import { GameError } from './errors.js';
 import { PLAYERS } from './constants.js';
 import { SUPPORTED_LANGUES } from '../config/langues.js';
+import { SUPPORTED_CATEGORIES, DEFAULT_CATEGORIE } from '../config/categories.js';
 
 const NIVEAUX = [1, 2, 3];
 const EMPTY_QUESTION_POOL = {
@@ -39,6 +40,15 @@ function validateNiveauMax(niveauMax) {
   return niveauMax;
 }
 
+function validateCategorie(categorie) {
+  if (!SUPPORTED_CATEGORIES.includes(categorie)) {
+    throw new GameError('INVALID_CATEGORIE', 'La catégorie doit être general ou couple', {
+      allowed: SUPPORTED_CATEGORIES,
+    });
+  }
+  return categorie;
+}
+
 function validateLangue(langue) {
   if (!SUPPORTED_LANGUES.includes(langue)) {
     throw new GameError('INVALID_LANGUE', 'La langue doit être fr ou en', { allowed: SUPPORTED_LANGUES });
@@ -74,13 +84,20 @@ function validateRegles(regles, current = DEFAULT_REGLES) {
 // déjà absent à ce nombre précis) : si l'hôte l'a activé puis qu'un 3e joueur
 // a rejoint, on le traite comme inactif sans avoir besoin de le désactiver
 // explicitement en base ni de prévenir l'hôte — il redevient actif de
-// lui-même si le salon repasse à 2 joueurs.
+// lui-même si le salon repasse à 2 joueurs. Le double ou rien, lui, n'a pas
+// de sens en mode couple (pas de niveau supérieur où piocher) : masqué côté
+// interface, désactivé ici en renfort pour qu'un appel direct ne puisse pas
+// le contourner.
 export function effectiveRegles(room) {
   // En partie, "2 joueurs" veut dire 2 joueurs actifs dans la rotation
   // (turnOrder) : un joueur qui a quitté reste dans `players` (status
   // "left") mais ne doit plus compter pour cette règle.
   const activeCount = room.status === 'playing' ? room.turnOrder.length : room.players.length;
-  return { ...room.regles, pariMutuel: room.regles.pariMutuel && activeCount === 2 };
+  return {
+    ...room.regles,
+    doubleOuRien: room.regles.doubleOuRien && room.categorie !== 'couple',
+    pariMutuel: room.regles.pariMutuel && activeCount === 2,
+  };
 }
 
 export function createRoom({
@@ -91,8 +108,9 @@ export function createRoom({
   targetScore = null,
   niveauMax = 1,
   langue = 'fr',
+  categorie = DEFAULT_CATEGORIE,
   regles = {},
-  maxPlayers = PLAYERS.defaultMax,
+  maxPlayers = categorie === 'couple' ? PLAYERS.coupleMax : PLAYERS.defaultMax,
 }) {
   const settings = validateSettings(maxTurns, targetScore);
 
@@ -102,6 +120,7 @@ export function createRoom({
     status: 'waiting',
     settings,
     niveauMax: validateNiveauMax(niveauMax),
+    categorie: validateCategorie(categorie),
     langue: validateLangue(langue),
     maxPlayers: validateMaxPlayers(maxPlayers),
     players: [{ id: hostId, pseudo: hostPseudo, score: 0, status: 'active' }],
@@ -132,12 +151,18 @@ export function updateNiveauMax(room, niveauMax) {
   if (room.status !== 'waiting') {
     throw new GameError('ROOM_NOT_JOINABLE', 'Impossible de modifier le niveau après le lancement');
   }
+  if (room.categorie === 'couple') {
+    throw new GameError('CATEGORIE_LOCKS_NIVEAU', "Le niveau ne s'applique pas en mode couple");
+  }
   return { ...room, niveauMax: validateNiveauMax(niveauMax) };
 }
 
 export function updateMaxPlayers(room, maxPlayers) {
   if (room.status !== 'waiting') {
     throw new GameError('ROOM_NOT_JOINABLE', 'Impossible de modifier le nombre de joueurs après le lancement');
+  }
+  if (room.categorie === 'couple') {
+    throw new GameError('CATEGORIE_LOCKS_MAX_PLAYERS', 'Le nombre de joueurs est verrouillé à 2 en mode couple');
   }
   const validated = validateMaxPlayers(maxPlayers);
   if (validated < room.players.length) {
@@ -148,6 +173,34 @@ export function updateMaxPlayers(room, maxPlayers) {
     );
   }
   return { ...room, maxPlayers: validated };
+}
+
+// Basculer de catégorie réinitialise le niveau à sa valeur par défaut et
+// ajuste la limite de joueurs à ce qui est pertinent pour la catégorie
+// choisie (verrouillée à 2 en couple, valeur par défaut sinon) — jamais
+// d'expulsion : si des joueurs en trop sont déjà là, le passage en couple
+// est simplement refusé.
+export function updateCategorie(room, categorie) {
+  if (room.status !== 'waiting') {
+    throw new GameError('ROOM_NOT_JOINABLE', 'Impossible de modifier la catégorie après le lancement');
+  }
+  const validated = validateCategorie(categorie);
+  if (validated === room.categorie) return room;
+
+  if (validated === 'couple' && room.players.length > PLAYERS.coupleMax) {
+    throw new GameError(
+      'CATEGORIE_TOO_MANY_PLAYERS',
+      `Impossible de passer en mode couple : ${room.players.length} joueurs sont déjà dans le salon (maximum ${PLAYERS.coupleMax})`,
+      { current: room.players.length, max: PLAYERS.coupleMax }
+    );
+  }
+
+  return {
+    ...room,
+    categorie: validated,
+    maxPlayers: validated === 'couple' ? PLAYERS.coupleMax : PLAYERS.defaultMax,
+    niveauMax: 1,
+  };
 }
 
 export function updateLangue(room, langue) {

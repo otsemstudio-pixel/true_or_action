@@ -68,6 +68,11 @@ export default {
     copieImpossible: 'Impossible de copier automatiquement, notez le code manuellement.',
     reglesDuJeu: 'Règles du jeu',
     aucuneRegleActive: 'Aucune règle spéciale activée.',
+    categorie: 'Catégorie',
+    categorieGeneral: 'Entre amis',
+    categorieCouple: 'En couple',
+    categorieGeneralHint: 'La banque de questions habituelle, pour un groupe.',
+    categorieCoupleHint: "Une banque dédiée à deux, du léger à l'intime. Verrouillé à 2 joueurs, sans niveau.",
   },
 
   regles: {
@@ -200,6 +205,9 @@ export default {
 
   didacticiel: {
     titre: 'Comment jouer',
+    compris: 'Compris, on joue !',
+
+    essentielTitre: "L'essentiel",
     tourTitre: 'Le tour',
     tourTexte: 'La roue tire Vérité ou Action. Le joueur actif répond, les autres votent.',
     pointsTitre: 'Les points',
@@ -208,11 +216,34 @@ export default {
     tempsTitre: 'Le temps',
     tempsTexte:
       '{{answer}} secondes pour répondre, {{vote}} secondes pour voter. Passé ce délai, le tour se termine sans point.',
-    niveauxTitre: 'Les niveaux',
-    niveauxTexte: "L'hôte choisit le niveau des questions : Tout public, Entre amis, ou Sans filtre.",
     voteTitre: 'Le vote',
     voteTexte: 'Un pouce vers le haut donne un point bonus. À 2 joueurs, le vote est sauté.',
-    compris: 'Compris, on joue !',
+
+    niveauxTitre: 'Les niveaux',
+    niveauxTexte:
+      "L'hôte choisit un niveau : Tout public, Entre amis, ou Sans filtre. Le tirage est cumulatif : un niveau élevé pioche aussi dans les niveaux plus légers, pas seulement dans le sien.",
+
+    coupleTitre: 'Le mode couple',
+    coupleTexte:
+      "Une banque de questions dédiée à deux, du léger à l'intime, sans notion de niveau — à vous deux de décider où vous arrêter. Verrouillé à 2 joueurs pour rester dans son contexte.",
+
+    langueTitre: 'La langue des questions',
+    langueTexte:
+      "L'hôte choisit la langue dans laquelle les questions sont piochées, indépendamment de la langue d'interface de chacun.",
+
+    reglesTitre: 'Les règles optionnelles',
+    reglesAucuneActive: 'Aucune règle optionnelle activée dans cette partie.',
+
+    reponseTitre: 'Répondre à un message',
+    reponseTexte:
+      "Appui long sur un message (ou survol puis clic sur ordinateur) pour lui répondre — la citation renvoie au message d'origine d'un tap.",
+
+    recapTitre: 'Le récapitulatif',
+    recapTexte: 'Le bouton "Récapitulatif" retrouve à tout moment les questions et réponses des tours précédents.',
+
+    nouveautesTitre: 'Nouveautés',
+    nouveautesIntro: "Depuis votre dernière visite, l'application s'est enrichie :",
+    voirDidacticielComplet: 'Voir le didacticiel complet',
   },
 
   erreurLimite: {
@@ -231,6 +262,10 @@ export default {
     INVALID_LANGUE: 'Langue invalide.',
     INVALID_MAX_PLAYERS: 'Le nombre maximum de joueurs doit être entre 2 et 20.',
     MAX_PLAYERS_BELOW_CURRENT: 'Impossible de descendre sous le nombre de joueurs déjà présents.',
+    INVALID_CATEGORIE: 'Catégorie invalide.',
+    CATEGORIE_TOO_MANY_PLAYERS: 'Impossible de passer en mode couple : trop de joueurs sont déjà dans le salon (maximum 2).',
+    CATEGORIE_LOCKS_NIVEAU: "Le niveau ne s'applique pas en mode couple.",
+    CATEGORIE_LOCKS_MAX_PLAYERS: 'Le nombre de joueurs est verrouillé à 2 en mode couple.',
     ROOM_NOT_JOINABLE: "Ce salon n'est plus accessible.",
     ROOM_FULL: 'Le salon est complet.',
     ALREADY_IN_ROOM: 'Vous êtes déjà dans ce salon.',

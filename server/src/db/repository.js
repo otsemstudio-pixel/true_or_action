@@ -69,6 +69,18 @@ export async function updateRoomMaxPlayers(db, roomId, maxPlayers) {
   await db.query('UPDATE rooms SET max_players = $1 WHERE id = $2', [maxPlayers, roomId]);
 }
 
+// Basculer de catégorie ajuste toujours la limite de joueurs et le niveau en
+// même temps côté pur (game/room.js updateCategorie) : les trois colonnes
+// sont donc écrites ensemble ici pour rester cohérentes en base.
+export async function updateRoomCategorie(db, roomId, { categorie, maxPlayers, niveauMax }) {
+  await db.query('UPDATE rooms SET categorie = $1, max_players = $2, niveau_max = $3 WHERE id = $4', [
+    categorie,
+    maxPlayers,
+    niveauMax,
+    roomId,
+  ]);
+}
+
 export async function updateRoomLangue(db, roomId, langue) {
   await db.query('UPDATE rooms SET langue = $1 WHERE id = $2', [langue, roomId]);
 }
@@ -387,10 +399,18 @@ export async function fetchRecentMessages(db, roomId, limit = 30) {
 // Bucket "top" = niveau exactement égal à niveauMax (le niveau choisi par
 // l'hôte), "lower" = tous les niveaux strictement en dessous. C'est sur ce
 // découpage que game/turn.js applique la pondération 60/40 du tirage.
-export async function fetchQuestionBank(db, { niveauMax = 1, langue = 'fr' } = {}) {
+//
+// Catégorie 'couple' : les questions n'ont pas de notion de niveau (elles
+// vont du léger à l'intime dans un même ensemble) — niveauMax est ignoré et
+// tout tombe dans "top", ce qui revient à un tirage à plat sur l'ensemble de
+// la catégorie sans toucher à la logique de pondération de game/turn.js.
+export async function fetchQuestionBank(db, { niveauMax = 1, langue = 'fr', categorie = 'general' } = {}) {
+  const isCouple = categorie === 'couple';
   const res = await db.query(
-    'SELECT id, type, contenu, niveau FROM questions WHERE is_public = true AND niveau <= $1 AND langue = $2',
-    [niveauMax, langue]
+    isCouple
+      ? 'SELECT id, type, contenu, niveau FROM questions WHERE is_public = true AND categorie = $1 AND langue = $2'
+      : 'SELECT id, type, contenu, niveau FROM questions WHERE is_public = true AND categorie = $1 AND langue = $2 AND niveau <= $3',
+    isCouple ? [categorie, langue] : [categorie, langue, niveauMax]
   );
 
   const questionPool = {
@@ -400,7 +420,7 @@ export async function fetchQuestionBank(db, { niveauMax = 1, langue = 'fr' } = {
   const byId = new Map();
 
   for (const row of res.rows) {
-    const bucket = row.niveau === niveauMax ? 'top' : 'lower';
+    const bucket = isCouple || row.niveau === niveauMax ? 'top' : 'lower';
     questionPool[row.type][bucket].push(row.id);
     byId.set(row.id, row.contenu);
   }

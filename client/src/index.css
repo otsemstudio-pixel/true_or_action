@@ -1515,10 +1515,67 @@ input {
   line-height: 1.4;
 }
 
-.tutoriel-regles-titre {
-  font-size: var(--text-base);
+.tutoriel-groupe-titre {
+  font-size: var(--text-xs);
   font-weight: 700;
-  margin-top: var(--space-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+/* Sections consultables à la demande : repliées par défaut, pour que
+   l'essentiel (toujours visible au-dessus) ne se noie pas dans le reste. */
+.tutoriel-accordion {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-4);
+}
+
+.tutoriel-accordion-item {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.tutoriel-accordion-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap-min);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-raised);
+  border: none;
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tutoriel-accordion-titre {
+  flex: 1;
+}
+
+.tutoriel-accordion-chevron {
+  font-size: var(--text-lg);
+  color: var(--color-text-muted);
+  line-height: 1;
+}
+
+.tutoriel-accordion-content {
+  padding: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+.tutoriel-sections--nested {
+  padding: 0 var(--space-3) var(--space-3);
+  gap: var(--space-3);
 }
 
 /* Écran de fin */

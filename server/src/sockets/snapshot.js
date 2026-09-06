@@ -1,3 +1,5 @@
+import { effectiveRegles } from '../game/room.js';
+
 export function buildSnapshot(entry) {
   const { room, chat, timers } = entry;
 
@@ -54,8 +56,13 @@ export function buildSnapshot(entry) {
     settings: room.settings,
     niveauMax: room.niveauMax,
     maxPlayers: room.maxPlayers,
+    categorie: room.categorie,
     langue: room.langue,
-    regles: room.regles,
+    // Vue effective (pari mutuel selon le nombre de joueurs, double ou rien
+    // masqué en mode couple) : jamais la valeur brute stockée, pour que
+    // l'affichage (salon d'attente, partie) ne montre jamais une règle
+    // "active" qui ne l'est plus réellement dans le contexte courant.
+    regles: effectiveRegles(room),
     partieId: entry.dbPartieId ?? null,
     players: room.players,
     turnNumber: room.turnNumber,

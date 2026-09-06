@@ -18,6 +18,9 @@ export const PLAYERS = {
   min: 2,
   max: 20,
   defaultMax: 8,
+  // Le mode couple verrouille le salon à ce nombre exact de joueurs, ni
+  // plus ni moins (voir game/room.js updateCategorie/createRoom).
+  coupleMax: 2,
 };
 
 // Un tour n'attend plus tout le monde pour se résoudre : 60% des votants

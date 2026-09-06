@@ -707,6 +707,16 @@ describe('règle B : le double ou rien', () => {
     assert.equal(effect.points, 0);
   });
 
+  test('indisponible en mode couple (pas de niveau supérieur), même activé', () => {
+    const room = twoPlayerRoom({ maxTurns: 1, categorie: 'couple', regles: { doubleOuRien: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3'], actionTop: ['a1', 'a2', 'a3'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    assert.equal(start.room.currentTurn.phase, 'answering');
+    assert.equal(start.room.currentTurn.mode, 'normal');
+  });
+
   test('indisponible si le salon est déjà au niveau maximum', () => {
     const room = threePlayerRoom({ maxTurns: 1, niveauMax: 3, regles: { doubleOuRien: true } });
     const start = startGame(room, {

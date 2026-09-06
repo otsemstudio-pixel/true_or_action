@@ -28,16 +28,19 @@ function SalonAttenteScreen() {
     updateRoomSettings,
     updateNiveauMax,
     updateMaxPlayers,
+    updateCategorie,
     updateRoomLangue,
     updateRoomRegles,
     startGame,
   } = useRoom();
   const { t } = useI18n();
   const isHost = String(user.id) === room.hostId;
+  const isCouple = room.categorie === 'couple';
   const [niveauBusy, setNiveauBusy] = useState(false);
   const [langueBusy, setLangueBusy] = useState(false);
   const [reglesBusy, setReglesBusy] = useState(false);
   const [maxPlayersBusy, setMaxPlayersBusy] = useState(false);
+  const [categorieBusy, setCategorieBusy] = useState(false);
 
   // Champs d'édition locaux à l'hôte : initialisés une fois depuis les réglages du
   // salon, puis pilotés uniquement par la saisie locale. Les réglages de room ne
@@ -94,6 +97,19 @@ function SalonAttenteScreen() {
       setError(translateError(t, err));
     } finally {
       setMaxPlayersBusy(false);
+    }
+  };
+
+  const handleCategorieChange = async (categorie) => {
+    if (categorie === room.categorie) return;
+    setError(null);
+    setCategorieBusy(true);
+    try {
+      await updateCategorie(categorie);
+    } catch (err) {
+      setError(translateError(t, err));
+    } finally {
+      setCategorieBusy(false);
     }
   };
 
@@ -161,8 +177,39 @@ function SalonAttenteScreen() {
       <ErrorBanner>{error}</ErrorBanner>
 
       <div className="card">
+        <h2>{t('salon.categorie')}</h2>
+        {isHost ? (
+          <>
+            <div className="settings-mode">
+              <button
+                type="button"
+                className={`btn btn-ghost${!isCouple ? ' btn-mode-active' : ''}`}
+                disabled={categorieBusy}
+                onClick={() => handleCategorieChange('general')}
+              >
+                {t('salon.categorieGeneral')}
+              </button>
+              <button
+                type="button"
+                className={`btn btn-ghost${isCouple ? ' btn-mode-active' : ''}`}
+                disabled={categorieBusy}
+                onClick={() => handleCategorieChange('couple')}
+              >
+                {t('salon.categorieCouple')}
+              </button>
+            </div>
+            <p className="menu-item-hint">
+              {isCouple ? t('salon.categorieCoupleHint') : t('salon.categorieGeneralHint')}
+            </p>
+          </>
+        ) : (
+          <p>{isCouple ? t('salon.categorieCouple') : t('salon.categorieGeneral')}</p>
+        )}
+      </div>
+
+      <div className="card">
         <h2>{t('salon.joueurs', { count: room.players.length, max: room.maxPlayers })}</h2>
-        {isHost && (
+        {isHost && !isCouple && (
           <div className="field">
             <label htmlFor="max-players">{t('salon.nombreMaxJoueurs')}</label>
             <select
@@ -257,28 +304,32 @@ function SalonAttenteScreen() {
       </div>
 
       <div className="card">
-        <h2>{t('salon.niveauDesQuestions')}</h2>
-        {isHost ? (
+        {!isCouple && (
           <>
-            <div className="settings-mode settings-mode--niveau">
-              {NIVEAUX.map((niveau) => (
-                <button
-                  key={niveau}
-                  type="button"
-                  className={`btn btn-ghost${room.niveauMax === niveau ? ' btn-mode-active' : ''}`}
-                  disabled={niveauBusy}
-                  onClick={() => handleNiveauChange(niveau)}
-                >
-                  {t(`niveau.label.${niveau}`)}
-                </button>
-              ))}
-            </div>
-            <p className="menu-item-hint">{t(`niveau.description.${room.niveauMax}`)}</p>
-          </>
-        ) : (
-          <>
-            <p>{t(`niveau.label.${room.niveauMax}`)}</p>
-            <p className="menu-item-hint">{t(`niveau.description.${room.niveauMax}`)}</p>
+            <h2>{t('salon.niveauDesQuestions')}</h2>
+            {isHost ? (
+              <>
+                <div className="settings-mode settings-mode--niveau">
+                  {NIVEAUX.map((niveau) => (
+                    <button
+                      key={niveau}
+                      type="button"
+                      className={`btn btn-ghost${room.niveauMax === niveau ? ' btn-mode-active' : ''}`}
+                      disabled={niveauBusy}
+                      onClick={() => handleNiveauChange(niveau)}
+                    >
+                      {t(`niveau.label.${niveau}`)}
+                    </button>
+                  ))}
+                </div>
+                <p className="menu-item-hint">{t(`niveau.description.${room.niveauMax}`)}</p>
+              </>
+            ) : (
+              <>
+                <p>{t(`niveau.label.${room.niveauMax}`)}</p>
+                <p className="menu-item-hint">{t(`niveau.description.${room.niveauMax}`)}</p>
+              </>
+            )}
           </>
         )}
 
@@ -306,25 +357,27 @@ function SalonAttenteScreen() {
         <h2>{t('salon.reglesDuJeu')}</h2>
         {isHost ? (
           <div className="regle-list">
-            {REGLE_KEYS.filter((key) => key !== 'pariMutuel' || room.players.length === 2).map((key) => (
-              <div key={key} className="regle-row">
-                <div className="regle-info">
-                  <span className="regle-nom">{t(`regles.${key}.nom`)}</span>
-                  <span className="regle-description">{t(`regles.${key}.description`)}</span>
+            {REGLE_KEYS.filter((key) => key !== 'pariMutuel' || room.players.length === 2)
+              .filter((key) => key !== 'doubleOuRien' || !isCouple)
+              .map((key) => (
+                <div key={key} className="regle-row">
+                  <div className="regle-info">
+                    <span className="regle-nom">{t(`regles.${key}.nom`)}</span>
+                    <span className="regle-description">{t(`regles.${key}.description`)}</span>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={room.regles[key]}
+                    aria-label={t(`regles.${key}.nom`)}
+                    disabled={reglesBusy}
+                    className={`regle-switch${room.regles[key] ? ' regle-switch--active' : ''}`}
+                    onClick={() => handleToggleRegle(key)}
+                  >
+                    <span className="regle-switch-knob" />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={room.regles[key]}
-                  aria-label={t(`regles.${key}.nom`)}
-                  disabled={reglesBusy}
-                  className={`regle-switch${room.regles[key] ? ' regle-switch--active' : ''}`}
-                  onClick={() => handleToggleRegle(key)}
-                >
-                  <span className="regle-switch-knob" />
-                </button>
-              </div>
-            ))}
+              ))}
           </div>
         ) : (
           <ReglesActives regles={room.regles} />
@@ -346,6 +399,7 @@ function SalonAttenteScreen() {
       <Tutoriel
         open={tutorielOpen}
         regles={room.regles}
+        categorie={room.categorie}
         onClose={() => {
           markTutorielSeen();
           setTutorielOpen(false);

@@ -5,6 +5,7 @@ export {
   updateSettings,
   updateNiveauMax,
   updateMaxPlayers,
+  updateCategorie,
   updateLangue,
   updateRegles,
   addPlayer,

@@ -9,7 +9,7 @@ import ErrorBanner from '../components/ErrorBanner.jsx';
 import LangueSelector from '../components/LangueSelector.jsx';
 import ThemeSelector from '../components/ThemeSelector.jsx';
 import Tutoriel from '../components/Tutoriel.jsx';
-import { hasTutorielSeen, markTutorielSeen } from '../lib/tutoriel.js';
+import { hasTutorielSeen, shouldShowNouveautes, markTutorielSeen } from '../lib/tutoriel.js';
 
 const DEFAULT_MAX_TURNS = 10;
 
@@ -21,13 +21,26 @@ function MenuScreen() {
   const [busy, setBusy] = useState(null); // 'create' | 'join' | null
   const [error, setError] = useState(null);
   const [tutorielOpen, setTutorielOpen] = useState(false);
+  const [tutorielView, setTutorielView] = useState('full');
 
-  // Proposé automatiquement une seule fois, avant la première partie du
-  // joueur : le booléen en localStorage suffit, pas besoin de le stocker
-  // côté serveur.
+  // Proposé automatiquement une seule fois avant la première partie (vue
+  // complète), puis reproposé sous forme de "Nouveautés" si des sections ont
+  // été ajoutées depuis la dernière visite — jamais le didacticiel complet
+  // repris depuis le début pour quelqu'un qui l'a déjà vu.
   useEffect(() => {
-    if (!hasTutorielSeen()) setTutorielOpen(true);
+    if (!hasTutorielSeen()) {
+      setTutorielView('full');
+      setTutorielOpen(true);
+    } else if (shouldShowNouveautes()) {
+      setTutorielView('nouveautes');
+      setTutorielOpen(true);
+    }
   }, []);
+
+  const openFullTutoriel = () => {
+    setTutorielView('full');
+    setTutorielOpen(true);
+  };
 
   const closeTutoriel = () => {
     markTutorielSeen();
@@ -68,7 +81,7 @@ function MenuScreen() {
       </div>
 
       <div className="menu-header-row">
-        <button type="button" className="link-btn" onClick={() => setTutorielOpen(true)}>
+        <button type="button" className="link-btn" onClick={openFullTutoriel}>
           {t('menu.commentJouer')}
         </button>
         <button type="button" className="link-btn" onClick={logout}>
@@ -108,7 +121,7 @@ function MenuScreen() {
         <p className="menu-block-hint">{t('menu.bientotDisponible')}</p>
       </div>
 
-      <Tutoriel open={tutorielOpen} onClose={closeTutoriel} />
+      <Tutoriel open={tutorielOpen} initialView={tutorielView} onClose={closeTutoriel} />
     </div>
   );
 }

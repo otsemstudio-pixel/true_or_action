@@ -68,6 +68,11 @@ export default {
     copieImpossible: "Couldn't copy automatically, please note the code manually.",
     reglesDuJeu: 'Game rules',
     aucuneRegleActive: 'No special rule enabled.',
+    categorie: 'Category',
+    categorieGeneral: 'With friends',
+    categorieCouple: 'As a couple',
+    categorieGeneralHint: 'The usual question bank, for a group.',
+    categorieCoupleHint: 'A bank made for two, from light to intimate. Locked to 2 players, no level.',
   },
 
   regles: {
@@ -198,17 +203,42 @@ export default {
 
   didacticiel: {
     titre: 'How to play',
+    compris: "Got it, let's play!",
+
+    essentielTitre: 'The essentials',
     tourTitre: 'The turn',
     tourTexte: 'The wheel picks Truth or Dare. The active player answers, the others vote.',
     pointsTitre: 'Points',
     pointsTexte: 'Truth is worth {{verite}} point, Dare {{action}} points. Each thumbs up adds {{bonus}} point.',
     tempsTitre: 'Timing',
     tempsTexte: '{{answer}} seconds to answer, {{vote}} seconds to vote. Past that, the turn ends with no points.',
-    niveauxTitre: 'Levels',
-    niveauxTexte: 'The host picks the question level: Family friendly, Between friends, or No filter.',
     voteTitre: 'Voting',
     voteTexte: 'A thumbs up adds a bonus point. With 2 players, voting is skipped.',
-    compris: "Got it, let's play!",
+
+    niveauxTitre: 'Levels',
+    niveauxTexte:
+      'The host picks a level: Family friendly, Between friends, or No filter. Draws are cumulative: a higher level also pulls from the lighter ones, not just its own.',
+
+    coupleTitre: 'Couple mode',
+    coupleTexte:
+      "A question bank made for two, from light to intimate, with no notion of level — you both decide where to stop. Locked to 2 players to stay in context.",
+
+    langueTitre: 'Question language',
+    langueTexte: "The host picks the language questions are drawn in, independent of each player's interface language.",
+
+    reglesTitre: 'Optional rules',
+    reglesAucuneActive: 'No optional rule enabled in this game.',
+
+    reponseTitre: 'Replying to a message',
+    reponseTexte:
+      'Long-press a message (or hover then click on desktop) to reply to it — the quote jumps back to the original message with a tap.',
+
+    recapTitre: 'The recap',
+    recapTexte: 'The "Recap" button brings back the questions and answers from previous turns at any time.',
+
+    nouveautesTitre: "What's new",
+    nouveautesIntro: 'Since your last visit, the app has grown:',
+    voirDidacticielComplet: 'See the full tutorial',
   },
 
   erreurLimite: {
@@ -227,6 +257,10 @@ export default {
     INVALID_LANGUE: 'Invalid language.',
     INVALID_MAX_PLAYERS: 'The maximum number of players must be between 2 and 20.',
     MAX_PLAYERS_BELOW_CURRENT: 'Cannot go below the number of players already in the room.',
+    INVALID_CATEGORIE: 'Invalid category.',
+    CATEGORIE_TOO_MANY_PLAYERS: 'Cannot switch to couple mode: too many players are already in the room (maximum 2).',
+    CATEGORIE_LOCKS_NIVEAU: 'The level does not apply in couple mode.',
+    CATEGORIE_LOCKS_MAX_PLAYERS: 'The number of players is locked to 2 in couple mode.',
     ROOM_NOT_JOINABLE: 'This room is no longer accessible.',
     ROOM_FULL: 'The room is full.',
     ALREADY_IN_ROOM: 'You are already in this room.',

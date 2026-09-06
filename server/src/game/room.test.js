@@ -5,6 +5,7 @@ import {
   updateSettings,
   updateNiveauMax,
   updateMaxPlayers,
+  updateCategorie,
   updateLangue,
   addPlayer,
   removePlayer,
@@ -13,6 +14,7 @@ import {
   markReconnected,
   excludePlayer,
   canStart,
+  effectiveRegles,
 } from './room.js';
 import { GameError } from './errors.js';
 
@@ -120,6 +122,82 @@ describe('updateMaxPlayers', () => {
   test('refuse après le lancement de la partie', () => {
     const room = { ...baseRoom(), status: 'playing' };
     assert.throws(() => updateMaxPlayers(room, 10), (err) => err.code === 'ROOM_NOT_JOINABLE');
+  });
+
+  test('verrouillé en mode couple', () => {
+    const room = updateCategorie(baseRoom(), 'couple');
+    assert.throws(() => updateMaxPlayers(room, 10), (err) => err.code === 'CATEGORIE_LOCKS_MAX_PLAYERS');
+  });
+});
+
+describe('createRoom (catégorie)', () => {
+  test("catégorie 'general' par défaut", () => {
+    assert.equal(baseRoom().categorie, 'general');
+  });
+
+  test('accepte la catégorie couple à la création', () => {
+    const room = createRoom({ code: 'ABCD', hostId: 'p1', hostPseudo: 'Hôte', maxTurns: 5, categorie: 'couple' });
+    assert.equal(room.categorie, 'couple');
+  });
+
+  test('rejette une catégorie inconnue', () => {
+    assert.throws(
+      () => createRoom({ code: 'ABCD', hostId: 'p1', hostPseudo: 'Hôte', maxTurns: 5, categorie: 'exotique' }),
+      (err) => err.code === 'INVALID_CATEGORIE'
+    );
+  });
+});
+
+describe('updateCategorie', () => {
+  test('passe en couple : verrouille à 2 joueurs et réinitialise le niveau', () => {
+    let room = updateNiveauMax(baseRoom(), 3);
+    room = addPlayer(room, { id: 'p2', pseudo: 'B' });
+    room = updateCategorie(room, 'couple');
+    assert.equal(room.categorie, 'couple');
+    assert.equal(room.maxPlayers, 2);
+    assert.equal(room.niveauMax, 1);
+  });
+
+  test('refuse de passer en couple si trop de joueurs sont déjà présents, sans en expulser aucun', () => {
+    let room = baseRoom();
+    room = addPlayer(room, { id: 'p2', pseudo: 'B' });
+    room = addPlayer(room, { id: 'p3', pseudo: 'C' });
+    assert.throws(() => updateCategorie(room, 'couple'), (err) => err.code === 'CATEGORIE_TOO_MANY_PLAYERS');
+    assert.equal(room.players.length, 3, "aucun joueur n'est expulsé par la tentative refusée");
+  });
+
+  test('repasse en general : rétablit la limite de joueurs par défaut et réinitialise le niveau', () => {
+    const couple = updateCategorie(baseRoom(), 'couple');
+    const backToGeneral = updateCategorie(couple, 'general');
+    assert.equal(backToGeneral.categorie, 'general');
+    assert.equal(backToGeneral.maxPlayers, 8);
+    assert.equal(backToGeneral.niveauMax, 1);
+  });
+
+  test('ne fait rien si la catégorie demandée est déjà la catégorie courante', () => {
+    const room = baseRoom();
+    assert.equal(updateCategorie(room, 'general'), room);
+  });
+
+  test('rejette une catégorie inconnue', () => {
+    assert.throws(() => updateCategorie(baseRoom(), 'exotique'), (err) => err.code === 'INVALID_CATEGORIE');
+  });
+
+  test('refuse après le lancement de la partie', () => {
+    const room = { ...baseRoom(), status: 'playing' };
+    assert.throws(() => updateCategorie(room, 'couple'), (err) => err.code === 'ROOM_NOT_JOINABLE');
+  });
+});
+
+describe('effectiveRegles (mode couple)', () => {
+  test('masque le double ou rien en mode couple même si activé', () => {
+    let room = createRoom({ code: 'ABCD', hostId: 'p1', hostPseudo: 'A', maxTurns: 5, categorie: 'couple', regles: { doubleOuRien: true } });
+    assert.equal(effectiveRegles(room).doubleOuRien, false);
+  });
+
+  test('le double ou rien reste actif en mode general', () => {
+    const room = createRoom({ code: 'ABCD', hostId: 'p1', hostPseudo: 'A', maxTurns: 5, regles: { doubleOuRien: true } });
+    assert.equal(effectiveRegles(room).doubleOuRien, true);
   });
 });
 

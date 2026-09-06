@@ -66,9 +66,11 @@ export async function loadRoomEntryFromDb(roomRow) {
   const usedQuestionIds = currentPartie
     ? new Set(await repo.fetchUsedQuestionIds(pool, currentPartie.id))
     : new Set();
+  const categorie = roomRow.categorie ?? 'general';
   const { questionPool: fullPool, byId: questionsById } = await repo.fetchQuestionBank(pool, {
     niveauMax: roomRow.niveau_max ?? 1,
     langue: roomRow.langue ?? 'fr',
+    categorie,
   });
   const questionPool = {
     verite: {
@@ -82,10 +84,14 @@ export async function loadRoomEntryFromDb(roomRow) {
   };
 
   const regles = repo.reglesFromRoomRow(roomRow);
-  if (regles.doubleOuRien && (roomRow.niveau_max ?? 1) < 3) {
+  // Double ou rien n'existe pas en mode couple (pas de niveau supérieur où
+  // piocher) : même vérification qu'effectiveRegles côté pur, dupliquée ici
+  // car reconstruct.js construit le pool avant d'avoir un objet room complet.
+  if (regles.doubleOuRien && categorie !== 'couple' && (roomRow.niveau_max ?? 1) < 3) {
     const { questionPool: escaladeBank } = await repo.fetchQuestionBank(pool, {
       niveauMax: (roomRow.niveau_max ?? 1) + 1,
       langue: roomRow.langue ?? 'fr',
+      categorie,
     });
     questionPool.escalade = {
       verite: escaladeBank.verite.top.filter((id) => !usedQuestionIds.has(id)),
@@ -107,6 +113,7 @@ export async function loadRoomEntryFromDb(roomRow) {
     niveauMax: roomRow.niveau_max ?? 1,
     langue: roomRow.langue ?? 'fr',
     maxPlayers: roomRow.max_players ?? 8,
+    categorie,
     players,
     turnOrder,
     currentTurnIndex,
