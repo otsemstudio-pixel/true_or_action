@@ -8,6 +8,26 @@ import { registerSocketHandlers, reloadActiveRooms } from './sockets/index.js';
 import authRouter from './routes/auth.js';
 import { deleteInactiveGuests } from './auth/repository.js';
 
+// Filet de dernier recours : sans lui, la moindre promesse rejetée sans
+// gestionnaire (ou exception échappée d'un code non couvert par un
+// try/catch) termine tout le process Node — coupant TOUTES les parties en
+// cours pour TOUS les joueurs, pas seulement la connexion à l'origine du
+// problème. Chaque salon vit dans son propre état isolé (voir sockets/store.js) :
+// mieux vaut journaliser bruyamment et laisser tourner le reste des parties
+// que de garantir une coupure totale à chaque bug non anticipé. Ce choix
+// (continuer plutôt que sortir) ne remplace pas la correction des causes —
+// c'est une protection en profondeur, pas une excuse pour ne pas corriger.
+process.on('unhandledRejection', (reason) => {
+  console.error(
+    'Rejet de promesse non intercepté (le process continue) :',
+    reason instanceof Error ? reason.stack : reason
+  );
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Exception non interceptée (le process continue) :', err instanceof Error ? err.stack : err);
+});
+
 const app = express();
 
 app.use(cors({ origin: env.clientOrigins }));

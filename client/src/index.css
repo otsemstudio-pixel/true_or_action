@@ -745,6 +745,17 @@ input {
   background: var(--color-danger);
 }
 
+.connection-dot--blocked {
+  background: var(--color-danger);
+}
+
+.connection-badge--blocked {
+  max-width: 220px;
+  white-space: normal;
+  text-align: left;
+  line-height: 1.3;
+}
+
 /* Spinner */
 
 .spinner {

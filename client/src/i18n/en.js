@@ -3,6 +3,7 @@ export default {
     connecte: 'Connected',
     reconnexion: 'Reconnecting…',
     horsLigne: 'Offline',
+    connexionBloquee: 'Your network is blocking this game — try a different network',
     chargement: 'Loading…',
     copier: 'Copy',
     copie: 'Copied!',

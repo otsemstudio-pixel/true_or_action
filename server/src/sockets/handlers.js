@@ -481,14 +481,14 @@ export function registerSocketHandlers(io) {
     socket.on('room:rejoin', async (payload, ack) => {
       try {
         const code = String(payload?.code ?? '').toUpperCase();
-        const existingEntry = getEntry(code);
-        if (!existingEntry) throw new GameError('ROOM_NOT_FOUND', 'Salon introuvable');
+        const entry = getEntry(code);
+        if (!entry) throw new GameError('ROOM_NOT_FOUND', 'Salon introuvable');
 
-        const player = getPlayer(existingEntry.room, socket.data.playerId);
+        const player = getPlayer(entry.room, socket.data.playerId);
         if (!player) throw new GameError('PLAYER_NOT_FOUND', 'Vous ne faites pas partie de ce salon');
 
-        const freshEntry = await runExclusive(existingEntry, async () => {
-          await repo.updatePlayerState(pool, existingEntry.dbRoomId, Number(socket.data.playerId), 'active');
+        await runExclusive(entry, async () => {
+          await repo.updatePlayerState(pool, entry.dbRoomId, Number(socket.data.playerId), 'active');
 
           // Le snapshot de reconnexion se construit toujours depuis la base,
           // jamais depuis le cache mémoire — celui-ci se resynchronise dessus.
@@ -496,23 +496,38 @@ export function registerSocketHandlers(io) {
           if (!roomRow) throw new GameError('ROOM_NOT_FOUND', 'Salon introuvable');
           const { entry: reloaded } = await loadRoomEntryFromDb(roomRow);
 
-          reloaded.sockets = existingEntry.sockets;
-          reloaded.timers = existingEntry.timers;
-          reloaded.graceTimers = existingEntry.graceTimers;
-          reloaded.chat.rateLimits = existingEntry.chat.rateLimits;
-          setEntry(code, reloaded);
-          return reloaded;
+          // Mutation en place plutôt que substitution dans le store
+          // (`setEntry` avec un nouvel objet) : une action d'un AUTRE joueur
+          // qui aurait capturé cette même `entry` juste avant (via son propre
+          // `getEntry(code)`, en attente sur `entry.lock`) continue de
+          // s'exécuter sur cet objet une fois la reconnexion terminée, au
+          // lieu d'opérer sur une copie devenue invisible du store pendant
+          // qu'une nouvelle file de verrou démarre ailleurs. Une substitution
+          // romprait la continuité de `entry.lock` et permettrait à cette
+          // action orpheline de s'exécuter en parallèle de la suite de la
+          // partie — son effet (un vote, une réponse) resterait alors
+          // invisible de l'état vivant tout en étant potentiellement déjà
+          // écrit en base, un tour pouvant rester bloqué jusqu'à expiration
+          // d'un minuteur ou une prochaine reconnexion.
+          entry.room = reloaded.room;
+          entry.dbRoomId = reloaded.dbRoomId;
+          entry.dbPartieId = reloaded.dbPartieId;
+          entry.currentTurnDbId = reloaded.currentTurnDbId;
+          entry.questionsById = reloaded.questionsById;
+          entry.chat.messages = reloaded.chat.messages;
+          // sockets, timers, graceTimers, chat.rateLimits : jamais touchés
+          // ici, c'est l'état vivant de la connexion en cours, pas quelque
+          // chose que la base pourrait reconstruire.
         });
-        freshEntry.lock = Promise.resolve(); // l'opération ci-dessus est terminée, la file repart à vide
 
-        clearGraceTimer(freshEntry, socket.data.playerId);
-        freshEntry.sockets.set(socket.data.playerId, socket.id);
+        clearGraceTimer(entry, socket.data.playerId);
+        entry.sockets.set(socket.data.playerId, socket.id);
 
         socket.join(code);
         socket.data.roomCode = code;
 
-        broadcastPlayers(io, freshEntry);
-        ack?.({ ok: true, snapshot: buildSnapshot(freshEntry) });
+        broadcastPlayers(io, entry);
+        ack?.({ ok: true, snapshot: buildSnapshot(entry) });
       } catch (err) {
         ack?.(errorResponse(err));
       }
