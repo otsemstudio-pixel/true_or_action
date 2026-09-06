@@ -12,6 +12,7 @@ export async function persistEffect(client, entry, newRoom, effect) {
     case 'TURN_STARTED': {
       const id = await repo.insertTurn(client, {
         roomId: entry.dbRoomId,
+        partieId: entry.dbPartieId,
         playerId: Number(effect.activePlayerId),
         questionId: effect.questionId,
         numero: effect.turnNumber,
@@ -39,6 +40,7 @@ export async function persistEffect(client, entry, newRoom, effect) {
     }
     case 'GAME_ENDED':
       await repo.updateRoomStatus(client, entry.dbRoomId, 'finished');
+      await repo.updatePartieEnded(client, entry.dbPartieId);
       return null;
     default:
       return null;

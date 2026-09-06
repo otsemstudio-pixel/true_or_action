@@ -14,6 +14,7 @@ export function createRoomEntry(room) {
   return {
     room,
     dbRoomId: null, // id numérique en base (rooms.id) — la source d'autorité
+    dbPartieId: null, // id de la partie en cours (parties.id) — un salon peut en enchaîner plusieurs
     currentTurnDbId: null, // id de la ligne turns.* du tour en cours
     questionsById: new Map(),
     sockets: new Map(), // playerId -> socketId

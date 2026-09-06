@@ -16,7 +16,8 @@ export async function loadRoomEntryFromDb(roomRow) {
   }));
   const turnOrder = dbPlayers.filter((p) => p.state !== 'left').map((p) => String(p.user_id));
 
-  const latestTurn = await repo.fetchLatestTurn(pool, roomRow.id);
+  const currentPartie = await repo.fetchCurrentPartie(pool, roomRow.id);
+  const latestTurn = currentPartie ? await repo.fetchLatestTurn(pool, currentPartie.id) : null;
   let currentTurn = null;
   let currentTurnDbId = null;
   let currentTurnIndex = -1;
@@ -46,7 +47,9 @@ export async function loadRoomEntryFromDb(roomRow) {
     };
   }
 
-  const usedQuestionIds = new Set(await repo.fetchUsedQuestionIds(pool, roomRow.id));
+  const usedQuestionIds = currentPartie
+    ? new Set(await repo.fetchUsedQuestionIds(pool, currentPartie.id))
+    : new Set();
   const { questionPool: fullPool, byId: questionsById } = await repo.fetchQuestionBank(pool, {
     niveauMax: roomRow.niveau_max ?? 1,
   });
@@ -80,6 +83,7 @@ export async function loadRoomEntryFromDb(roomRow) {
 
   const entry = createRoomEntry(room);
   entry.dbRoomId = roomRow.id;
+  entry.dbPartieId = currentPartie?.id ?? null;
   entry.currentTurnDbId = currentTurnDbId;
   entry.questionsById = questionsById;
   entry.chat.messages = messages;
@@ -89,11 +93,4 @@ export async function loadRoomEntryFromDb(roomRow) {
     .map((p) => ({ id: String(p.user_id), lastSeenAt: p.last_seen_at }));
 
   return { entry, deadlineInfo, disconnectedPlayers };
-}
-
-export async function buildSnapshotFromDb(code) {
-  const roomRow = await repo.fetchRoomByCode(pool, code);
-  if (!roomRow) return null;
-  const { entry } = await loadRoomEntryFromDb(roomRow);
-  return entry;
 }

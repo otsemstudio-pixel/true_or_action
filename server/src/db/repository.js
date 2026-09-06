@@ -89,6 +89,41 @@ export async function deleteLeftPlayers(db, roomId) {
   await db.query("DELETE FROM room_players WHERE room_id = $1 AND state = 'left'", [roomId]);
 }
 
+// --- parties ---
+// Un salon (rooms) peut enchaîner plusieurs parties (« rejouer »). Chaque
+// partie a son propre historique de tours/questions — l'unicité (une
+// question ne ressort pas deux fois, un numéro de tour est unique) est
+// scopée à la partie, jamais au salon.
+
+export async function insertPartie(db, roomId) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await db.query(
+        `INSERT INTO parties (room_id, numero)
+         SELECT $1, COALESCE(MAX(numero), 0) + 1 FROM parties WHERE room_id = $1
+         RETURNING id`,
+        [roomId]
+      );
+      return res.rows[0].id;
+    } catch (err) {
+      if (err.code === '23505' && attempt < 2) continue;
+      throw err;
+    }
+  }
+}
+
+export async function updatePartieEnded(db, partieId) {
+  await db.query('UPDATE parties SET ended_at = now() WHERE id = $1', [partieId]);
+}
+
+export async function fetchCurrentPartie(db, roomId) {
+  const res = await db.query(
+    'SELECT * FROM parties WHERE room_id = $1 AND ended_at IS NULL ORDER BY numero DESC LIMIT 1',
+    [roomId]
+  );
+  return res.rows[0] ?? null;
+}
+
 export async function fetchRoomPlayers(db, roomId) {
   const res = await db.query(
     `SELECT rp.user_id, rp.ordre, rp.score, rp.state, rp.last_seen_at, u.pseudo
@@ -101,11 +136,11 @@ export async function fetchRoomPlayers(db, roomId) {
 
 // --- turns ---
 
-export async function insertTurn(db, { roomId, playerId, questionId, numero, deadline }) {
+export async function insertTurn(db, { roomId, partieId, playerId, questionId, numero, deadline }) {
   const res = await db.query(
-    `INSERT INTO turns (room_id, player_id, question_id, numero, status, deadline)
-     VALUES ($1, $2, $3, $4, 'answering', $5) RETURNING id`,
-    [roomId, playerId, questionId, numero, deadline]
+    `INSERT INTO turns (room_id, partie_id, player_id, question_id, numero, status, deadline)
+     VALUES ($1, $2, $3, $4, $5, 'answering', $6) RETURNING id`,
+    [roomId, partieId, playerId, questionId, numero, deadline]
   );
   return res.rows[0].id;
 }
@@ -123,19 +158,14 @@ export async function updateTurnResolved(db, turnId, { status, points }) {
   await db.query('UPDATE turns SET status = $1, points = $2 WHERE id = $3', [status, points, turnId]);
 }
 
-export async function fetchLatestTurn(db, roomId) {
-  const res = await db.query('SELECT * FROM turns WHERE room_id = $1 ORDER BY numero DESC LIMIT 1', [roomId]);
+export async function fetchLatestTurn(db, partieId) {
+  const res = await db.query('SELECT * FROM turns WHERE partie_id = $1 ORDER BY numero DESC LIMIT 1', [partieId]);
   return res.rows[0] ?? null;
 }
 
-export async function fetchUsedQuestionIds(db, roomId) {
-  const res = await db.query('SELECT question_id FROM turns WHERE room_id = $1', [roomId]);
+export async function fetchUsedQuestionIds(db, partieId) {
+  const res = await db.query('SELECT question_id FROM turns WHERE partie_id = $1', [partieId]);
   return res.rows.map((r) => r.question_id);
-}
-
-export async function deleteRoomTurnsAndVotes(db, roomId) {
-  await db.query('DELETE FROM votes WHERE turn_id IN (SELECT id FROM turns WHERE room_id = $1)', [roomId]);
-  await db.query('DELETE FROM turns WHERE room_id = $1', [roomId]);
 }
 
 // --- votes ---

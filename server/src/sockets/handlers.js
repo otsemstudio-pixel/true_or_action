@@ -378,10 +378,10 @@ export function registerSocketHandlers(io) {
             await repo.updateRoomStatus(client, entry.dbRoomId, 'waiting');
             await repo.resetRoomPlayersScores(client, entry.dbRoomId);
             await repo.deleteLeftPlayers(client, entry.dbRoomId);
-            await repo.deleteRoomTurnsAndVotes(client, entry.dbRoomId);
           });
 
           entry.room = updatedRoom;
+          entry.dbPartieId = null;
           entry.currentTurnDbId = null;
         });
         clearAllTimers(entry);
@@ -407,6 +407,7 @@ export function registerSocketHandlers(io) {
 
           const { newTurnDbId } = await withTransaction(async (client) => {
             await repo.updateRoomStatus(client, entry.dbRoomId, 'playing');
+            entry.dbPartieId = await repo.insertPartie(client, entry.dbRoomId);
             return persistEffects(client, entry, room, effectsEnriched);
           });
 
