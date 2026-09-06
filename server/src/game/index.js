@@ -4,6 +4,7 @@ export {
   createRoom,
   updateSettings,
   updateNiveauMax,
+  updateMaxPlayers,
   updateLangue,
   updateRegles,
   addPlayer,

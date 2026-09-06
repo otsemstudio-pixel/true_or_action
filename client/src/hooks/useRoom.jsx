@@ -18,6 +18,7 @@ const initialState = {
   hostId: null,
   settings: null,
   niveauMax: 1,
+  maxPlayers: 8,
   langue: 'fr',
   regles: DEFAULT_REGLES,
   partieId: null,
@@ -40,6 +41,7 @@ function snapshotToState(snapshot) {
     hostId: snapshot.hostId,
     settings: snapshot.settings,
     niveauMax: snapshot.niveauMax,
+    maxPlayers: snapshot.maxPlayers ?? 8,
     langue: snapshot.langue ?? 'fr',
     regles: snapshot.regles ?? DEFAULT_REGLES,
     partieId: snapshot.partieId ?? null,
@@ -145,6 +147,9 @@ export function RoomProvider({ children }) {
     }
     function onNiveau({ niveauMax }) {
       setRoom((prev) => (prev.status === 'idle' ? prev : { ...prev, niveauMax }));
+    }
+    function onMaxPlayers({ maxPlayers }) {
+      setRoom((prev) => (prev.status === 'idle' ? prev : { ...prev, maxPlayers }));
     }
     function onLangue({ langue }) {
       setRoom((prev) => (prev.status === 'idle' ? prev : { ...prev, langue }));
@@ -377,6 +382,7 @@ export function RoomProvider({ children }) {
     socket.on('room:players', onPlayers);
     socket.on('room:settings', onSettings);
     socket.on('room:niveau', onNiveau);
+    socket.on('room:maxPlayers', onMaxPlayers);
     socket.on('room:langue', onLangue);
     socket.on('room:regles', onRegles);
     socket.on('game:started', onGameStarted);
@@ -401,6 +407,7 @@ export function RoomProvider({ children }) {
       socket.off('room:players', onPlayers);
       socket.off('room:settings', onSettings);
       socket.off('room:niveau', onNiveau);
+      socket.off('room:maxPlayers', onMaxPlayers);
       socket.off('room:langue', onLangue);
       socket.off('room:regles', onRegles);
       socket.off('game:started', onGameStarted);
@@ -451,6 +458,12 @@ export function RoomProvider({ children }) {
   const updateNiveauMax = useCallback(async (niveauMax) => {
     const res = await emitWithAck('room:niveau', { niveauMax });
     setRoom((prev) => ({ ...prev, niveauMax: res.niveauMax }));
+    return res;
+  }, []);
+
+  const updateMaxPlayers = useCallback(async (maxPlayers) => {
+    const res = await emitWithAck('room:maxPlayers', { maxPlayers });
+    setRoom((prev) => ({ ...prev, maxPlayers: res.maxPlayers }));
     return res;
   }, []);
 
@@ -510,6 +523,7 @@ export function RoomProvider({ children }) {
         leaveRoom,
         updateRoomSettings,
         updateNiveauMax,
+        updateMaxPlayers,
         updateRoomLangue,
         updateRoomRegles,
         startGame,

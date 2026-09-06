@@ -21,6 +21,17 @@ function validateSettings(maxTurns, targetScore) {
   return { maxTurns, targetScore };
 }
 
+function validateMaxPlayers(maxPlayers) {
+  if (!Number.isInteger(maxPlayers) || maxPlayers < PLAYERS.min || maxPlayers > PLAYERS.max) {
+    throw new GameError(
+      'INVALID_MAX_PLAYERS',
+      `Le nombre maximum de joueurs doit être entre ${PLAYERS.min} et ${PLAYERS.max}`,
+      { min: PLAYERS.min, max: PLAYERS.max }
+    );
+  }
+  return maxPlayers;
+}
+
 function validateNiveauMax(niveauMax) {
   if (!NIVEAUX.includes(niveauMax)) {
     throw new GameError('INVALID_NIVEAU', 'Le niveau doit être 1, 2 ou 3');
@@ -81,6 +92,7 @@ export function createRoom({
   niveauMax = 1,
   langue = 'fr',
   regles = {},
+  maxPlayers = PLAYERS.defaultMax,
 }) {
   const settings = validateSettings(maxTurns, targetScore);
 
@@ -91,6 +103,7 @@ export function createRoom({
     settings,
     niveauMax: validateNiveauMax(niveauMax),
     langue: validateLangue(langue),
+    maxPlayers: validateMaxPlayers(maxPlayers),
     players: [{ id: hostId, pseudo: hostPseudo, score: 0, status: 'active' }],
     turnOrder: [],
     currentTurnIndex: -1,
@@ -122,6 +135,21 @@ export function updateNiveauMax(room, niveauMax) {
   return { ...room, niveauMax: validateNiveauMax(niveauMax) };
 }
 
+export function updateMaxPlayers(room, maxPlayers) {
+  if (room.status !== 'waiting') {
+    throw new GameError('ROOM_NOT_JOINABLE', 'Impossible de modifier le nombre de joueurs après le lancement');
+  }
+  const validated = validateMaxPlayers(maxPlayers);
+  if (validated < room.players.length) {
+    throw new GameError(
+      'MAX_PLAYERS_BELOW_CURRENT',
+      `Impossible de descendre sous le nombre de joueurs déjà présents (${room.players.length})`,
+      { current: room.players.length }
+    );
+  }
+  return { ...room, maxPlayers: validated };
+}
+
 export function updateLangue(room, langue) {
   if (room.status !== 'waiting') {
     throw new GameError('ROOM_NOT_JOINABLE', 'Impossible de modifier la langue après le lancement');
@@ -140,7 +168,7 @@ export function addPlayer(room, { id, pseudo }) {
   if (room.status !== 'waiting') {
     throw new GameError('ROOM_NOT_JOINABLE', 'La partie a déjà commencé');
   }
-  if (room.players.length >= PLAYERS.max) {
+  if (room.players.length >= room.maxPlayers) {
     throw new GameError('ROOM_FULL', 'Le salon est complet');
   }
   if (room.players.some((p) => p.id === id)) {

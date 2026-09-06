@@ -4,11 +4,11 @@
 
 // --- rooms ---
 
-export async function insertRoom(db, { code, hostId, maxTurns, targetScore, timeoutSec, voteSec, langue }) {
+export async function insertRoom(db, { code, hostId, maxTurns, targetScore, timeoutSec, voteSec, langue, maxPlayers }) {
   const res = await db.query(
-    `INSERT INTO rooms (code, host_id, status, max_turns, score_cible, timeout_sec, vote_sec, langue)
-     VALUES ($1, $2, 'waiting', $3, $4, $5, $6, $7) RETURNING id`,
-    [code, hostId, maxTurns, targetScore, timeoutSec, voteSec, langue]
+    `INSERT INTO rooms (code, host_id, status, max_turns, score_cible, timeout_sec, vote_sec, langue, max_players)
+     VALUES ($1, $2, 'waiting', $3, $4, $5, $6, $7, $8) RETURNING id`,
+    [code, hostId, maxTurns, targetScore, timeoutSec, voteSec, langue, maxPlayers]
   );
   const roomId = res.rows[0].id;
   // Les règles démarrent toutes désactivées (valeur par défaut des colonnes) ;
@@ -63,6 +63,10 @@ export async function updateRoomHost(db, roomId, hostId) {
 
 export async function updateRoomNiveauMax(db, roomId, niveauMax) {
   await db.query('UPDATE rooms SET niveau_max = $1 WHERE id = $2', [niveauMax, roomId]);
+}
+
+export async function updateRoomMaxPlayers(db, roomId, maxPlayers) {
+  await db.query('UPDATE rooms SET max_players = $1 WHERE id = $2', [maxPlayers, roomId]);
 }
 
 export async function updateRoomLangue(db, roomId, langue) {

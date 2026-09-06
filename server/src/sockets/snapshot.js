@@ -53,6 +53,7 @@ export function buildSnapshot(entry) {
     hostId: room.hostId,
     settings: room.settings,
     niveauMax: room.niveauMax,
+    maxPlayers: room.maxPlayers,
     langue: room.langue,
     regles: room.regles,
     partieId: entry.dbPartieId ?? null,

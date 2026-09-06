@@ -106,6 +106,7 @@ export async function loadRoomEntryFromDb(roomRow) {
     settings: { maxTurns: roomRow.max_turns, targetScore: roomRow.score_cible },
     niveauMax: roomRow.niveau_max ?? 1,
     langue: roomRow.langue ?? 'fr',
+    maxPlayers: roomRow.max_players ?? 8,
     players,
     turnOrder,
     currentTurnIndex,

@@ -1,11 +1,13 @@
 import {
   GameError,
   TIMERS,
+  PLAYERS,
   REGLES_TIMERS,
   CHAT,
   createRoom,
   updateSettings,
   updateNiveauMax,
+  updateMaxPlayers,
   updateLangue,
   updateRegles,
   addPlayer,
@@ -366,7 +368,7 @@ export function registerSocketHandlers(io) {
   io.on('connection', (socket) => {
     socket.on('room:create', async (payload, ack) => {
       try {
-        const { maxTurns = null, targetScore = null, langue = 'fr' } = payload ?? {};
+        const { maxTurns = null, targetScore = null, langue = 'fr', maxPlayers = PLAYERS.defaultMax } = payload ?? {};
         const hostIdNum = Number(socket.data.playerId);
 
         // Valide les réglages avant de toucher la base (résultat jeté, on ne
@@ -378,6 +380,7 @@ export function registerSocketHandlers(io) {
           maxTurns,
           targetScore,
           langue,
+          maxPlayers,
         });
 
         let code;
@@ -394,6 +397,7 @@ export function registerSocketHandlers(io) {
                 timeoutSec: TIMERS.answerMs / 1000,
                 voteSec: TIMERS.voteMs / 1000,
                 langue,
+                maxPlayers,
               });
               await repo.insertRoomPlayer(client, id, hostIdNum);
               return id;
@@ -412,6 +416,7 @@ export function registerSocketHandlers(io) {
           maxTurns,
           targetScore,
           langue,
+          maxPlayers,
         });
         const entry = createRoomEntry(room);
         entry.dbRoomId = dbRoomId;
@@ -559,6 +564,26 @@ export function registerSocketHandlers(io) {
 
         io.to(entry.room.code).emit('room:niveau', { niveauMax: entry.room.niveauMax });
         ack?.({ ok: true, niveauMax: entry.room.niveauMax });
+      } catch (err) {
+        ack?.(errorResponse(err));
+      }
+    });
+
+    socket.on('room:maxPlayers', async (payload, ack) => {
+      try {
+        const entry = requireEntry(socket);
+        if (entry.room.hostId !== socket.data.playerId) {
+          throw new GameError('NOT_HOST', "Seul l'hôte peut modifier le nombre maximum de joueurs");
+        }
+        const { maxPlayers } = payload ?? {};
+        await runExclusive(entry, async () => {
+          const updatedRoom = updateMaxPlayers(entry.room, maxPlayers);
+          await repo.updateRoomMaxPlayers(pool, entry.dbRoomId, maxPlayers);
+          entry.room = updatedRoom;
+        });
+
+        io.to(entry.room.code).emit('room:maxPlayers', { maxPlayers: entry.room.maxPlayers });
+        ack?.({ ok: true, maxPlayers: entry.room.maxPlayers });
       } catch (err) {
         ack?.(errorResponse(err));
       }

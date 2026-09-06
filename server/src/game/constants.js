@@ -4,6 +4,9 @@ export const POINTS = {
 };
 
 export const VOTE_BONUS = 1;
+// Au-delà, un pouce supplémentaire ne rapporte plus rien : évite qu'un tour
+// dans un salon à 20 joueurs ne rapporte des dizaines de points d'un coup.
+export const VOTE_BONUS_MAX = 5;
 
 export const TIMERS = {
   answerMs: 90_000,
@@ -13,8 +16,14 @@ export const TIMERS = {
 
 export const PLAYERS = {
   min: 2,
-  max: 8,
+  max: 20,
+  defaultMax: 8,
 };
+
+// Un tour n'attend plus tout le monde pour se résoudre : 60% des votants
+// éligibles suffisent (sinon l'expiration du minuteur de vote tranche) — dans
+// un salon à 20 joueurs, attendre les 19 votes serait irréaliste.
+export const VOTE_QUORUM_RATIO = 0.6;
 
 export const CHAT = {
   maxLength: 300,

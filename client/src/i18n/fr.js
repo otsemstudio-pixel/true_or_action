@@ -46,6 +46,7 @@ export default {
   salon: {
     codeLabel: 'Code du salon',
     joueurs: 'Joueurs ({{count}}/{{max}})',
+    nombreMaxJoueurs: 'Nombre maximum de joueurs',
     encoreJoueurs: {
       one: 'Encore {{count}} joueur pour pouvoir lancer.',
       other: 'Encore {{count}} joueurs pour pouvoir lancer.',
@@ -228,6 +229,8 @@ export default {
     INVALID_SETTINGS: 'Réglages de fin de partie invalides.',
     INVALID_NIVEAU: 'Niveau invalide.',
     INVALID_LANGUE: 'Langue invalide.',
+    INVALID_MAX_PLAYERS: 'Le nombre maximum de joueurs doit être entre 2 et 20.',
+    MAX_PLAYERS_BELOW_CURRENT: 'Impossible de descendre sous le nombre de joueurs déjà présents.',
     ROOM_NOT_JOINABLE: "Ce salon n'est plus accessible.",
     ROOM_FULL: 'Le salon est complet.',
     ALREADY_IN_ROOM: 'Vous êtes déjà dans ce salon.',

@@ -66,6 +66,16 @@ function twoPlayerRoom(settings = {}) {
   return addPlayer(room, { id: 'p2', pseudo: 'B' });
 }
 
+// Pour les scénarios à quorum de vote (point 4) : p1 est toujours l'hôte /
+// premier joueur actif, pN les suivants jusqu'à n.
+function nPlayerRoom(n, settings = {}) {
+  let room = createRoom({ code: 'ABCD', hostId: 'p1', hostPseudo: 'A', maxPlayers: Math.max(n, 8), ...settings });
+  for (let i = 2; i <= n; i++) {
+    room = addPlayer(room, { id: `p${i}`, pseudo: `J${i}` });
+  }
+  return room;
+}
+
 describe('startGame', () => {
   test('refuse de démarrer sous le minimum de joueurs (1 seul)', () => {
     const room = createRoom({ code: 'ABCD', hostId: 'p1', hostPseudo: 'A', maxTurns: 3 });
@@ -260,6 +270,53 @@ describe('règles de vote', () => {
       () => submitVote(room, { voterId: 'p2', vote: 'up', turnNumber: 999 }),
       (err) => err.code === 'STALE_TURN'
     );
+  });
+
+  // Point 4 : dans un grand salon, le tour se résout dès 60% des votants
+  // éligibles plutôt que d'attendre le dernier — indispensable pour ne pas
+  // bloquer indéfiniment un tour à 19 votants potentiels.
+  test('un salon de 6 joueurs (5 votants éligibles) résout le tour dès 3 votes (quorum 60%), sans attendre les 2 derniers', () => {
+    const room = nPlayerRoom(6, { maxTurns: 1 });
+    const rng = createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]);
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
+      rng,
+    });
+    const answered = submitAnswer(start.room, { playerId: 'p1', text: 'réponse' });
+
+    const v1 = submitVote(answered.room, { voterId: 'p2', vote: 'up', turnNumber: 1 });
+    assert.equal(v1.room.currentTurn.phase, 'voting');
+    const v2 = submitVote(v1.room, { voterId: 'p3', vote: 'up', turnNumber: 1 });
+    assert.equal(v2.room.currentTurn.phase, 'voting');
+    const v3 = submitVote(v2.room, { voterId: 'p4', vote: 'up', turnNumber: 1 });
+
+    const resolved = v3.effects.find((e) => e.type === 'TURN_RESOLVED');
+    assert.ok(resolved, 'le tour doit se résoudre au 3e vote (quorum ceil(5*0.6)=3), p5 et p6 ne votent jamais');
+    assert.equal(resolved.points, 4); // 1 (vérité) + 3 pouces haut
+  });
+
+  // Point 4 : le bonus de vote reste +1/pouce mais plafonne à +5 par tour,
+  // même dans un très grand salon où beaucoup de pouces haut sont possibles.
+  test('le bonus de vote plafonne à +5 même avec plus de votants favorables', () => {
+    const room = nPlayerRoom(10, { maxTurns: 1 });
+    const rng = createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]);
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
+      rng,
+    });
+    const answered = submitAnswer(start.room, { playerId: 'p1', text: 'réponse' });
+
+    // 9 votants éligibles -> quorum = ceil(9*0.6) = 6 : le tour se résout au
+    // 6e pouce haut, avant que les 3 derniers n'aient pu voter.
+    let currentRoom = answered.room;
+    let last;
+    for (const voterId of ['p2', 'p3', 'p4', 'p5', 'p6', 'p7']) {
+      last = submitVote(currentRoom, { voterId, vote: 'up', turnNumber: 1 });
+      currentRoom = last.room;
+    }
+    const resolved = last.effects.find((e) => e.type === 'TURN_RESOLVED');
+    assert.ok(resolved, 'le tour doit se résoudre au 6e vote (quorum ceil(9*0.6)=6)');
+    assert.equal(resolved.points, 6); // 1 (vérité) + 5 (bonus plafonné, 6 pouces haut réels)
   });
 });
 
@@ -840,13 +897,14 @@ describe('règle D : le tour surprise', () => {
       'START_TIMER',
     ]);
 
+    // Le quorum (60% des votants éligibles, ici 2 sur 3) résout le tour dès
+    // le 2e vote : p3 n'a pas besoin de voter pour que le tour se termine.
     const v1 = submitSurpriseVote(a3.room, { voterId: 'p1', targetId: 'p3' });
     const v2 = submitSurpriseVote(v1.room, { voterId: 'p2', targetId: 'p3' });
-    const v3 = submitSurpriseVote(v2.room, { voterId: 'p3', targetId: 'p1' });
-    const resolved = v3.effects.find((e) => e.type === 'SURPRISE_RESOLVED');
+    const resolved = v2.effects.find((e) => e.type === 'SURPRISE_RESOLVED');
     assert.deepEqual(resolved.winnerIds, ['p3']);
 
-    const scores = Object.fromEntries(v3.room.players.map((p) => [p.id, p.score]));
+    const scores = Object.fromEntries(v2.room.players.map((p) => [p.id, p.score]));
     assert.equal(scores.p3, 3);
     assert.equal(scores.p1, 1);
     assert.equal(scores.p2, 1);
@@ -885,15 +943,16 @@ describe('règle D : le tour surprise', () => {
     const a1 = submitSurpriseAnswer(start.room, { playerId: 'p1', text: 'r1' });
     const a2 = submitSurpriseAnswer(a1.room, { playerId: 'p2', text: 'r2' });
     const a3 = submitSurpriseAnswer(a2.room, { playerId: 'p3', text: 'r3' });
+    // Le quorum (60% de 3 votants = 2) résout le tour dès ce 2e vote : p3 ne
+    // vote jamais, d'où l'égalité à deux plutôt qu'à trois.
     const v1 = submitSurpriseVote(a3.room, { voterId: 'p1', targetId: 'p2' });
-    const v2 = submitSurpriseVote(v1.room, { voterId: 'p2', targetId: 'p3' });
-    const v3 = submitSurpriseVote(v2.room, { voterId: 'p3', targetId: 'p1' });
-    const resolved = v3.effects.find((e) => e.type === 'SURPRISE_RESOLVED');
-    assert.deepEqual(resolved.winnerIds.sort(), ['p1', 'p2', 'p3']);
-    const scores = Object.fromEntries(v3.room.players.map((p) => [p.id, p.score]));
+    const v2 = submitSurpriseVote(v1.room, { voterId: 'p2', targetId: 'p1' });
+    const resolved = v2.effects.find((e) => e.type === 'SURPRISE_RESOLVED');
+    assert.deepEqual(resolved.winnerIds.sort(), ['p1', 'p2']);
+    const scores = Object.fromEntries(v2.room.players.map((p) => [p.id, p.score]));
     assert.equal(scores.p1, 3);
     assert.equal(scores.p2, 3);
-    assert.equal(scores.p3, 3);
+    assert.equal(scores.p3, 1);
   });
 
   test('cas explicite — le refus est indisponible pendant un tour surprise', () => {
@@ -918,15 +977,17 @@ describe('règle D : le tour surprise', () => {
     // pour observer un tour normal juste après un tour surprise.
     const forcedNormalRoom = { ...a3.room };
     const v1 = submitSurpriseVote(forcedNormalRoom, { voterId: 'p1', targetId: 'p2' });
-    const v2 = submitSurpriseVote(v1.room, { voterId: 'p2', targetId: 'p3' });
-    const v3 = submitSurpriseVote(v2.room, {
-      voterId: 'p3',
-      targetId: 'p1',
+    // Le quorum (60% de 3 votants = 2) résout le tour dès ce 2e vote — c'est
+    // donc cet appel qui tire le tour suivant, d'où le rng dédié ici plutôt
+    // que sur un 3e vote qui ne serait plus valide (le tour est déjà résolu).
+    const v2 = submitSurpriseVote(v1.room, {
+      voterId: 'p2',
+      targetId: 'p3',
       rng: createSequenceRng([0.9, 0.1, BUCKET_DONT_CARE, 0.0]), // pas de 2e tour surprise, tour normal
     });
-    if (v3.room.currentTurn?.mode === 'normal') {
+    if (v2.room.currentTurn?.mode === 'normal') {
       assert.throws(
-        () => returnQuestion(v3.room, { playerId: v3.room.currentTurn.activePlayerId }),
+        () => returnQuestion(v2.room, { playerId: v2.room.currentTurn.activePlayerId }),
         (err) => err.code === 'QUESTION_RETOURNEE_INDISPONIBLE'
       );
     }

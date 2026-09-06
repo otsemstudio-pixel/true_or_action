@@ -346,7 +346,8 @@ input {
   color: var(--color-text-muted);
 }
 
-.field input {
+.field input,
+.field select {
   min-height: var(--tap-min);
   padding: 0 var(--space-4);
   border-radius: var(--radius-md);
@@ -357,7 +358,8 @@ input {
   transition: border-color var(--transition-fast);
 }
 
-.field input:focus {
+.field input:focus,
+.field select:focus {
   outline: none;
   border-color: var(--color-verite);
 }
@@ -485,6 +487,15 @@ input {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+
+/* Jusqu'à 20 joueurs (point 4) : la liste défile dans une hauteur bornée
+   plutôt que d'allonger indéfiniment l'écran d'attente. En dessous de
+   ~5 joueurs elle tient déjà entière, aucune barre de défilement visible. */
+.player-list--scrollable {
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: var(--space-1);
 }
 
 .player-row {
@@ -1087,6 +1098,12 @@ input {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  /* Jusqu'à 20 joueurs (point 4), le vote du tour surprise peut lister
+     presque 19 réponses : borné et défilant plutôt que d'allonger la page à
+     l'infini. Sans effet sur les 3 choix de la règle A, qui tiennent déjà
+     largement dans cette hauteur. */
+  max-height: 400px;
+  overflow-y: auto;
 }
 
 .question-choice-item {

@@ -46,6 +46,7 @@ export default {
   salon: {
     codeLabel: 'Room code',
     joueurs: 'Players ({{count}}/{{max}})',
+    nombreMaxJoueurs: 'Maximum number of players',
     encoreJoueurs: {
       one: '{{count}} more player needed to start.',
       other: '{{count}} more players needed to start.',
@@ -224,6 +225,8 @@ export default {
     INVALID_SETTINGS: 'Invalid end-of-game settings.',
     INVALID_NIVEAU: 'Invalid level.',
     INVALID_LANGUE: 'Invalid language.',
+    INVALID_MAX_PLAYERS: 'The maximum number of players must be between 2 and 20.',
+    MAX_PLAYERS_BELOW_CURRENT: 'Cannot go below the number of players already in the room.',
     ROOM_NOT_JOINABLE: 'This room is no longer accessible.',
     ROOM_FULL: 'The room is full.',
     ALREADY_IN_ROOM: 'You are already in this room.',

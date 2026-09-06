@@ -22,13 +22,22 @@ function copyToClipboard(text) {
 
 function SalonAttenteScreen() {
   const { user } = useAuth();
-  const { room, leaveRoom, updateRoomSettings, updateNiveauMax, updateRoomLangue, updateRoomRegles, startGame } =
-    useRoom();
+  const {
+    room,
+    leaveRoom,
+    updateRoomSettings,
+    updateNiveauMax,
+    updateMaxPlayers,
+    updateRoomLangue,
+    updateRoomRegles,
+    startGame,
+  } = useRoom();
   const { t } = useI18n();
   const isHost = String(user.id) === room.hostId;
   const [niveauBusy, setNiveauBusy] = useState(false);
   const [langueBusy, setLangueBusy] = useState(false);
   const [reglesBusy, setReglesBusy] = useState(false);
+  const [maxPlayersBusy, setMaxPlayersBusy] = useState(false);
 
   // Champs d'édition locaux à l'hôte : initialisés une fois depuis les réglages du
   // salon, puis pilotés uniquement par la saisie locale. Les réglages de room ne
@@ -72,6 +81,19 @@ function SalonAttenteScreen() {
       setError(translateError(t, err));
     } finally {
       setNiveauBusy(false);
+    }
+  };
+
+  const handleMaxPlayersChange = async (value) => {
+    if (value === room.maxPlayers) return;
+    setError(null);
+    setMaxPlayersBusy(true);
+    try {
+      await updateMaxPlayers(value);
+    } catch (err) {
+      setError(translateError(t, err));
+    } finally {
+      setMaxPlayersBusy(false);
     }
   };
 
@@ -139,8 +161,28 @@ function SalonAttenteScreen() {
       <ErrorBanner>{error}</ErrorBanner>
 
       <div className="card">
-        <h2>{t('salon.joueurs', { count: room.players.length, max: 8 })}</h2>
-        <ul className="player-list">
+        <h2>{t('salon.joueurs', { count: room.players.length, max: room.maxPlayers })}</h2>
+        {isHost && (
+          <div className="field">
+            <label htmlFor="max-players">{t('salon.nombreMaxJoueurs')}</label>
+            <select
+              id="max-players"
+              value={room.maxPlayers}
+              disabled={maxPlayersBusy}
+              onChange={(e) => handleMaxPlayersChange(Number(e.target.value))}
+            >
+              {Array.from(
+                { length: 20 - Math.max(MIN_PLAYERS, room.players.length) + 1 },
+                (_, i) => Math.max(MIN_PLAYERS, room.players.length) + i
+              ).map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        <ul className="player-list player-list--scrollable">
           {room.players.map((p) => (
             <li key={p.id} className="player-row">
               <span className="player-name">

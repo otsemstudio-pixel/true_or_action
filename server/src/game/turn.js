@@ -1,5 +1,5 @@
 import { GameError } from './errors.js';
-import { POINTS, VOTE_BONUS, TIMERS, PLAYERS, REGLES, REGLES_TIMERS } from './constants.js';
+import { POINTS, VOTE_BONUS, VOTE_BONUS_MAX, VOTE_QUORUM_RATIO, TIMERS, PLAYERS, REGLES, REGLES_TIMERS } from './constants.js';
 import { canStart, getPlayer, excludePlayer, effectiveRegles } from './room.js';
 
 const TOP_NIVEAU_WEIGHT = 0.6;
@@ -149,9 +149,9 @@ export function submitVote(room, { voterId, vote, turnNumber, rng = defaultRng }
   const eligibleVoters = room.players.filter(
     (p) => p.id !== room.currentTurn.activePlayerId && p.status !== 'left'
   );
-  const allVoted = eligibleVoters.every((p) => Boolean(room2.currentTurn.votes[p.id]));
+  const votesCast = eligibleVoters.filter((p) => Boolean(room2.currentTurn.votes[p.id])).length;
 
-  if (allVoted) {
+  if (quorumReached(votesCast, eligibleVoters.length)) {
     const resolved = resolveTurn(room2, rng);
     return {
       room: resolved.room,
@@ -497,8 +497,8 @@ export function submitSurpriseVote(room, { voterId, targetId, rng = defaultRng }
   const effects = [{ type: 'SURPRISE_VOTE_SUBMITTED', turnNumber, voterId }];
 
   const eligibleVoters = room.currentTurn.activePlayerIds.filter((id) => room.currentTurn.answers[id] != null || true);
-  const allVoted = eligibleVoters.every((id) => Boolean(votes[id]));
-  if (allVoted) {
+  const votesCast = eligibleVoters.filter((id) => Boolean(votes[id])).length;
+  if (quorumReached(votesCast, eligibleVoters.length)) {
     const resolved = resolveSurpriseTurn(room2, rng);
     return { room: resolved.room, effects: [...effects, { type: 'CLEAR_TIMER', name: 'vote', turnNumber }, ...resolved.effects] };
   }
@@ -559,6 +559,15 @@ function resolveSurpriseTurn(room, rng) {
 }
 
 // ---------- Aiguillage phase / mode ----------
+
+// Un tour se résout dès que 60% des votants éligibles se sont exprimés,
+// plutôt que d'attendre systématiquement le dernier — sinon un salon à 20
+// joueurs resterait bloqué en attente d'un traînard (le minuteur de vote
+// tranche de toute façon si même ce seuil n'est jamais atteint). Avec 0
+// votant éligible, le seuil (0) est trivialement atteint : rien à attendre.
+function quorumReached(votesCast, eligibleCount) {
+  return votesCast >= Math.ceil(eligibleCount * VOTE_QUORUM_RATIO);
+}
 
 function assertTurnPhase(room, phase) {
   if (!room.currentTurn || room.currentTurn.phase !== phase) {
@@ -853,7 +862,8 @@ function startSurpriseTurn(room, rng) {
 function resolveTurn(room, rng, { pariMutuelVerdict = null } = {}) {
   const turn = room.currentTurn;
   const thumbsUp = Object.values(turn.votes).filter((v) => v === 'up').length;
-  let points = turn.answer === null ? 0 : POINTS[turn.type] + thumbsUp * VOTE_BONUS;
+  const voteBonus = Math.min(thumbsUp * VOTE_BONUS, VOTE_BONUS_MAX);
+  let points = turn.answer === null ? 0 : POINTS[turn.type] + voteBonus;
   if (turn.doubleOuRien) {
     points = turn.answer === null ? 0 : points * REGLES.doubleOuRienMultiplicateur;
   }

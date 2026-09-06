@@ -4,6 +4,7 @@ import {
   createRoom,
   updateSettings,
   updateNiveauMax,
+  updateMaxPlayers,
   updateLangue,
   addPlayer,
   removePlayer,
@@ -96,6 +97,32 @@ describe('updateNiveauMax', () => {
   });
 });
 
+describe('updateMaxPlayers', () => {
+  test('augmente la limite tant que le salon attend', () => {
+    const room = updateMaxPlayers(baseRoom(), 20);
+    assert.equal(room.maxPlayers, 20);
+  });
+
+  test('refuse une limite hors de [2, 20]', () => {
+    assert.throws(() => updateMaxPlayers(baseRoom(), 1), (err) => err.code === 'INVALID_MAX_PLAYERS');
+    assert.throws(() => updateMaxPlayers(baseRoom(), 21), (err) => err.code === 'INVALID_MAX_PLAYERS');
+  });
+
+  test('refuse de descendre sous le nombre de joueurs déjà présents', () => {
+    let room = baseRoom();
+    room = addPlayer(room, { id: 'p2', pseudo: 'B' });
+    room = addPlayer(room, { id: 'p3', pseudo: 'C' });
+    assert.throws(() => updateMaxPlayers(room, 2), (err) => err.code === 'MAX_PLAYERS_BELOW_CURRENT');
+    // Mais rester à 3 pile, ou monter, reste permis.
+    assert.equal(updateMaxPlayers(room, 3).maxPlayers, 3);
+  });
+
+  test('refuse après le lancement de la partie', () => {
+    const room = { ...baseRoom(), status: 'playing' };
+    assert.throws(() => updateMaxPlayers(room, 10), (err) => err.code === 'ROOM_NOT_JOINABLE');
+  });
+});
+
 describe('updateSettings', () => {
   test('change le mode de fin de partie tant que le salon attend', () => {
     const room = updateSettings(baseRoom(), { targetScore: 20 });
@@ -134,13 +161,33 @@ describe('addPlayer', () => {
     assert.throws(() => addPlayer(room, { id: 'p2', pseudo: 'B' }), (err) => err.code === 'ALREADY_IN_ROOM');
   });
 
-  test('refuse au-delà de 8 joueurs', () => {
+  test('refuse au-delà de 8 joueurs (limite par défaut)', () => {
     let room = baseRoom();
     for (let i = 2; i <= 8; i++) {
       room = addPlayer(room, { id: `p${i}`, pseudo: `J${i}` });
     }
     assert.equal(room.players.length, 8);
     assert.throws(() => addPlayer(room, { id: 'p9', pseudo: 'Trop' }), (err) => err.code === 'ROOM_FULL');
+  });
+
+  test("respecte une limite personnalisée jusqu'à 20 joueurs", () => {
+    let room = createRoom({ code: 'ABCD', hostId: 'p1', hostPseudo: 'Hôte', maxTurns: 5, maxPlayers: 20 });
+    for (let i = 2; i <= 20; i++) {
+      room = addPlayer(room, { id: `p${i}`, pseudo: `J${i}` });
+    }
+    assert.equal(room.players.length, 20);
+    assert.throws(() => addPlayer(room, { id: 'p21', pseudo: 'Trop' }), (err) => err.code === 'ROOM_FULL');
+  });
+
+  test('refuse une limite personnalisée hors de [2, 20] à la création', () => {
+    assert.throws(
+      () => createRoom({ code: 'ABCD', hostId: 'p1', hostPseudo: 'Hôte', maxTurns: 5, maxPlayers: 1 }),
+      (err) => err.code === 'INVALID_MAX_PLAYERS'
+    );
+    assert.throws(
+      () => createRoom({ code: 'ABCD', hostId: 'p1', hostPseudo: 'Hôte', maxTurns: 5, maxPlayers: 21 }),
+      (err) => err.code === 'INVALID_MAX_PLAYERS'
+    );
   });
 
   test('refuse de rejoindre une partie déjà lancée', () => {
