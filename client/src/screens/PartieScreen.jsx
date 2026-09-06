@@ -5,17 +5,34 @@ import { useI18n } from '../hooks/useI18n.jsx';
 import ScoreBoard from '../components/ScoreBoard.jsx';
 import Wheel from '../components/Wheel.jsx';
 import TurnPanel from '../components/TurnPanel.jsx';
+import SurpriseTurnPanel from '../components/SurpriseTurnPanel.jsx';
+import PariMutuelPanel from '../components/PariMutuelPanel.jsx';
 import ChatPanel from '../components/ChatPanel.jsx';
 import ResultToast from '../components/ResultToast.jsx';
 import RecapPanel from '../components/RecapPanel.jsx';
+import ReglesActives from '../components/ReglesActives.jsx';
 import Button from '../components/Button.jsx';
 
 function PartieScreen() {
   const { user } = useAuth();
-  const { room, sendAnswer, sendVote, sendChat } = useRoom();
+  const {
+    room,
+    sendAnswer,
+    sendVote,
+    sendChat,
+    sendPass,
+    chooseQuestion,
+    respondNiveauChoice,
+    returnQuestionAction,
+    sendBet,
+    judgeBet,
+    sendSurpriseAnswer,
+    sendSurpriseVote,
+  } = useRoom();
   const { t } = useI18n();
   const myId = String(user.id);
   const [recapOpen, setRecapOpen] = useState(false);
+  const isSurprise = room.currentTurn?.mode === 'surprise';
 
   return (
     <div className="screen partie-screen">
@@ -29,11 +46,39 @@ function PartieScreen() {
           </Button>
         </div>
 
+        <ReglesActives regles={room.regles} />
+
         <ResultToast result={room.lastResult} players={room.players} />
 
         <Wheel type={room.currentTurn?.type} turnNumber={room.currentTurn?.turnNumber} />
 
-        <TurnPanel turn={room.currentTurn} players={room.players} myId={myId} onSubmitAnswer={sendAnswer} />
+        {isSurprise ? (
+          <SurpriseTurnPanel
+            turn={room.currentTurn}
+            players={room.players}
+            myId={myId}
+            onSubmitAnswer={sendSurpriseAnswer}
+            onVote={sendSurpriseVote}
+          />
+        ) : (
+          <>
+            <TurnPanel
+              turn={room.currentTurn}
+              players={room.players}
+              myId={myId}
+              regles={room.regles}
+              onSubmitAnswer={sendAnswer}
+              onPass={sendPass}
+              onChooseQuestion={chooseQuestion}
+              onRespondNiveauChoice={respondNiveauChoice}
+              onReturnQuestion={returnQuestionAction}
+              onJudgeBet={judgeBet}
+            />
+            {room.regles.pariMutuel && (
+              <PariMutuelPanel turn={room.currentTurn} players={room.players} myId={myId} onSendBet={sendBet} />
+            )}
+          </>
+        )}
       </div>
 
       <div className="partie-chat-col">

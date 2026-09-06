@@ -1,11 +1,13 @@
 import {
   GameError,
   TIMERS,
+  REGLES_TIMERS,
   CHAT,
   createRoom,
   updateSettings,
   updateNiveauMax,
   updateLangue,
+  updateRegles,
   addPlayer,
   removePlayer,
   restartRoom,
@@ -18,6 +20,19 @@ import {
   answerTimeout,
   submitVote,
   voteTimeout,
+  submitPass,
+  respondDoubleOuRien,
+  niveauChoiceTimeout,
+  chooseQuestion,
+  questionChoiceTimeout,
+  returnQuestion,
+  submitBet,
+  judgeBet,
+  judgeBetTimeout,
+  submitSurpriseAnswer,
+  surpriseAnswerTimeout,
+  submitSurpriseVote,
+  surpriseVoteTimeout,
   validateMessageText,
   isWithinRateLimit,
 } from '../game/index.js';
@@ -62,6 +77,18 @@ function enrichEffects(effects) {
     if (effect.type === 'ANSWER_SUBMITTED') {
       return { ...effect, voteDeadline: Date.now() + TIMERS.voteMs };
     }
+    if (effect.type === 'NIVEAU_CHOICE_OFFERED') {
+      return { ...effect, deadline: Date.now() + REGLES_TIMERS.niveauChoiceMs };
+    }
+    if (effect.type === 'QUESTION_CHOICE_OFFERED') {
+      return { ...effect, deadline: Date.now() + REGLES_TIMERS.questionChoiceMs };
+    }
+    if (effect.type === 'JUGEMENT_STARTED') {
+      return { ...effect, deadline: Date.now() + REGLES_TIMERS.jugementMs };
+    }
+    if (effect.type === 'SURPRISE_VOTING_STARTED') {
+      return { ...effect, voteDeadline: Date.now() + TIMERS.voteMs };
+    }
     return effect;
   });
 }
@@ -70,14 +97,28 @@ function broadcastEffects(io, entry, effects, newAnswerMessage = null) {
   for (const effect of effects) {
     switch (effect.type) {
       case 'TURN_STARTED':
-        io.to(entry.room.code).emit('turn:started', {
-          turnNumber: effect.turnNumber,
-          activePlayerId: effect.activePlayerId,
-          type: effect.questionType,
-          questionId: effect.questionId,
-          contenu: entry.questionsById.get(effect.questionId) ?? null,
-          answerDeadline: effect.answerDeadline,
-        });
+        if (effect.mode === 'surprise') {
+          io.to(entry.room.code).emit('turn:started', {
+            turnNumber: effect.turnNumber,
+            mode: 'surprise',
+            activePlayerIds: effect.activePlayerIds,
+            type: effect.questionType,
+            questionId: effect.questionId,
+            contenu: entry.questionsById.get(effect.questionId) ?? null,
+            answerDeadline: effect.answerDeadline,
+          });
+        } else {
+          io.to(entry.room.code).emit('turn:started', {
+            turnNumber: effect.turnNumber,
+            mode: 'normal',
+            activePlayerId: effect.activePlayerId,
+            type: effect.questionType,
+            questionId: effect.questionId,
+            contenu: entry.questionsById.get(effect.questionId) ?? null,
+            answerDeadline: effect.answerDeadline,
+            doubleOuRien: Boolean(effect.doubleOuRien),
+          });
+        }
         break;
       case 'ANSWER_SUBMITTED':
         io.to(entry.room.code).emit('turn:answered', {
@@ -106,6 +147,8 @@ function broadcastEffects(io, entry, effects, newAnswerMessage = null) {
           points: effect.points,
           votes: effect.votes,
           players: entry.room.players,
+          doubleOuRien: Boolean(effect.doubleOuRien),
+          pariMutuel: effect.pariMutuel ?? null,
         });
         break;
       case 'GAME_ENDED':
@@ -115,6 +158,91 @@ function broadcastEffects(io, entry, effects, newAnswerMessage = null) {
           ranking: effect.ranking,
         });
         break;
+
+      // ---------- Règle A : le refus qui coûte ----------
+      case 'PASS_SUBMITTED':
+        io.to(entry.room.code).emit('turn:passed', {
+          turnNumber: effect.turnNumber,
+          playerId: effect.playerId,
+          points: effect.points,
+          players: entry.room.players,
+        });
+        break;
+      case 'QUESTION_CHOICE_OFFERED':
+        io.to(entry.room.code).emit('turn:questionChoiceOffered', {
+          turnNumber: effect.turnNumber,
+          activePlayerId: effect.activePlayerId,
+          choices: effect.choices.map((c) => ({
+            questionId: c.questionId,
+            type: c.type,
+            contenu: entry.questionsById.get(c.questionId) ?? null,
+          })),
+          deadline: effect.deadline,
+        });
+        break;
+
+      // ---------- Règle B : le double ou rien ----------
+      case 'NIVEAU_CHOICE_OFFERED':
+        io.to(entry.room.code).emit('turn:niveauChoiceOffered', {
+          turnNumber: effect.turnNumber,
+          activePlayerId: effect.activePlayerId,
+          deadline: effect.deadline,
+        });
+        break;
+
+      // ---------- Règle C : la question retournée ----------
+      case 'QUESTION_RETURNED':
+        io.to(entry.room.code).emit('turn:questionReturned', {
+          turnNumber: effect.turnNumber,
+          fromPlayerId: effect.fromPlayerId,
+          toPlayerId: effect.toPlayerId,
+        });
+        break;
+
+      // ---------- Règle E : le pari mutuel ----------
+      // (submitBet ne produit lui-même aucun effet : le pari reste caché du
+      // joueur actif jusqu'à ce qu'il ait répondu — voir game/turn.js)
+      case 'JUGEMENT_STARTED':
+        io.to(entry.room.code).emit('turn:jugementStarted', {
+          turnNumber: effect.turnNumber,
+          bettorId: effect.bettorId,
+          bet: effect.bet,
+          deadline: effect.deadline,
+        });
+        break;
+
+      // ---------- Règle D : le tour surprise ----------
+      case 'SURPRISE_ANSWER_SUBMITTED':
+        // Le contenu de la réponse reste caché des autres jusqu'au vote —
+        // seul un accusé "a répondu" est diffusé pour la progression.
+        io.to(entry.room.code).emit('turn:surpriseAnswered', {
+          turnNumber: effect.turnNumber,
+          playerId: effect.playerId,
+        });
+        break;
+      case 'SURPRISE_VOTING_STARTED':
+        io.to(entry.room.code).emit('turn:surpriseVotingStarted', {
+          turnNumber: effect.turnNumber,
+          answers: effect.answers,
+          voteDeadline: effect.voteDeadline,
+        });
+        break;
+      case 'SURPRISE_VOTE_SUBMITTED':
+        io.to(entry.room.code).emit('turn:surpriseVoted', {
+          turnNumber: effect.turnNumber,
+          voterId: effect.voterId,
+        });
+        break;
+      case 'SURPRISE_RESOLVED':
+        io.to(entry.room.code).emit('turn:resolved', {
+          turnNumber: effect.turnNumber,
+          mode: 'surprise',
+          results: effect.results,
+          winnerIds: effect.winnerIds,
+          players: entry.room.players,
+        });
+        break;
+
       case 'START_TIMER':
         setTimer(entry, effect.name, effect.turnNumber, effect.durationMs, () =>
           runExclusive(entry, () => handleTimerFire(io, entry, effect.name, effect.turnNumber))
@@ -146,9 +274,30 @@ export async function applyGameEffects(io, entry, newRoom, effects) {
   broadcastEffects(io, entry, enriched, newAnswerMessage);
 }
 
+// Une fois le mode du tour connu, "answer"/"vote" ne pointent pas toujours
+// vers la même fonction pure : un tour surprise a ses propres timeouts.
+function resolveTimeoutHandler(entry, name) {
+  const isSurprise = entry.room.currentTurn?.mode === 'surprise';
+  switch (name) {
+    case 'answer':
+      return isSurprise ? surpriseAnswerTimeout : answerTimeout;
+    case 'vote':
+      return isSurprise ? surpriseVoteTimeout : voteTimeout;
+    case 'niveau_choice':
+      return niveauChoiceTimeout;
+    case 'question_choice':
+      return questionChoiceTimeout;
+    case 'jugement':
+      return judgeBetTimeout;
+    default:
+      return null;
+  }
+}
+
 export async function handleTimerFire(io, entry, name, turnNumber) {
   try {
-    const fn = name === 'answer' ? answerTimeout : voteTimeout;
+    const fn = resolveTimeoutHandler(entry, name);
+    if (!fn) return;
     const { room, effects } = fn(entry.room, { turnNumber });
     await applyGameEffects(io, entry, room, effects);
   } catch (err) {
@@ -435,6 +584,28 @@ export function registerSocketHandlers(io) {
       }
     });
 
+    // Point 3 : cinq règles optionnelles, host-only, modifiables seulement en
+    // salon d'attente — visibles par tous une fois activées.
+    socket.on('room:regles', async (payload, ack) => {
+      try {
+        const entry = requireEntry(socket);
+        if (entry.room.hostId !== socket.data.playerId) {
+          throw new GameError('NOT_HOST', "Seul l'hôte peut modifier les règles du jeu");
+        }
+        const regles = payload ?? {};
+        await runExclusive(entry, async () => {
+          const updatedRoom = updateRegles(entry.room, regles);
+          await repo.updateRoomRegles(pool, entry.dbRoomId, updatedRoom.regles);
+          entry.room = updatedRoom;
+        });
+
+        io.to(entry.room.code).emit('room:regles', { regles: entry.room.regles });
+        ack?.({ ok: true, regles: entry.room.regles });
+      } catch (err) {
+        ack?.(errorResponse(err));
+      }
+    });
+
     socket.on('game:rematch', async (_, ack) => {
       try {
         const entry = requireEntry(socket);
@@ -475,6 +646,18 @@ export function registerSocketHandlers(io) {
             niveauMax: entry.room.niveauMax,
             langue: entry.room.langue,
           });
+
+          // Règle B : le double ou rien pioche dans le niveau juste au-dessus
+          // du salon — jamais tiré tant que la règle n'est pas active.
+          if (entry.room.regles.doubleOuRien && entry.room.niveauMax < 3) {
+            const { questionPool: escaladeBank, byId: escaladeById } = await repo.fetchQuestionBank(pool, {
+              niveauMax: entry.room.niveauMax + 1,
+              langue: entry.room.langue,
+            });
+            questionPool.escalade = { verite: escaladeBank.verite.top, action: escaladeBank.action.top };
+            for (const [id, contenu] of escaladeById) byId.set(id, contenu);
+          }
+
           const { room, effects } = startGame(entry.room, { questionPool });
           const effectsEnriched = enrichEffects(effects);
 
@@ -532,6 +715,128 @@ export function registerSocketHandlers(io) {
       }
     });
 
+    // ---------- Règle A : le refus qui coûte ----------
+
+    socket.on('turn:pass', async (_, ack) => {
+      try {
+        const entry = requireEntry(socket);
+        await runExclusive(entry, async () => {
+          const { room, effects } = submitPass(entry.room, { playerId: socket.data.playerId });
+          await applyGameEffects(io, entry, room, effects);
+        });
+        ack?.({ ok: true });
+      } catch (err) {
+        ack?.(errorResponse(err));
+      }
+    });
+
+    socket.on('turn:questionChoice', async (payload, ack) => {
+      try {
+        const entry = requireEntry(socket);
+        const { questionId } = payload ?? {};
+        await runExclusive(entry, async () => {
+          const { room, effects } = chooseQuestion(entry.room, { playerId: socket.data.playerId, questionId });
+          await applyGameEffects(io, entry, room, effects);
+        });
+        ack?.({ ok: true });
+      } catch (err) {
+        ack?.(errorResponse(err));
+      }
+    });
+
+    // ---------- Règle B : le double ou rien ----------
+
+    socket.on('turn:niveauChoice', async (payload, ack) => {
+      try {
+        const entry = requireEntry(socket);
+        const { accept } = payload ?? {};
+        await runExclusive(entry, async () => {
+          const { room, effects } = respondDoubleOuRien(entry.room, { playerId: socket.data.playerId, accept });
+          await applyGameEffects(io, entry, room, effects);
+        });
+        ack?.({ ok: true });
+      } catch (err) {
+        ack?.(errorResponse(err));
+      }
+    });
+
+    // ---------- Règle C : la question retournée ----------
+
+    socket.on('turn:returnQuestion', async (_, ack) => {
+      try {
+        const entry = requireEntry(socket);
+        await runExclusive(entry, async () => {
+          const { room, effects } = returnQuestion(entry.room, { playerId: socket.data.playerId });
+          await applyGameEffects(io, entry, room, effects);
+        });
+        ack?.({ ok: true });
+      } catch (err) {
+        ack?.(errorResponse(err));
+      }
+    });
+
+    // ---------- Règle E : le pari mutuel ----------
+
+    socket.on('turn:bet', async (payload, ack) => {
+      try {
+        const entry = requireEntry(socket);
+        const { text } = payload ?? {};
+        await runExclusive(entry, async () => {
+          const { room, effects } = submitBet(entry.room, { playerId: socket.data.playerId, text });
+          // Volontairement pas de diffusion : le pari reste caché du joueur
+          // actif tant qu'il n'a pas répondu (voir game/turn.js).
+          await applyGameEffects(io, entry, room, effects);
+        });
+        ack?.({ ok: true });
+      } catch (err) {
+        ack?.(errorResponse(err));
+      }
+    });
+
+    socket.on('turn:judgeBet', async (payload, ack) => {
+      try {
+        const entry = requireEntry(socket);
+        const { verdict } = payload ?? {};
+        await runExclusive(entry, async () => {
+          const { room, effects } = judgeBet(entry.room, { playerId: socket.data.playerId, verdict });
+          await applyGameEffects(io, entry, room, effects);
+        });
+        ack?.({ ok: true });
+      } catch (err) {
+        ack?.(errorResponse(err));
+      }
+    });
+
+    // ---------- Règle D : le tour surprise ----------
+
+    socket.on('turn:surpriseAnswer', async (payload, ack) => {
+      try {
+        const entry = requireEntry(socket);
+        const { text } = payload ?? {};
+        await runExclusive(entry, async () => {
+          const { room, effects } = submitSurpriseAnswer(entry.room, { playerId: socket.data.playerId, text });
+          await applyGameEffects(io, entry, room, effects);
+        });
+        ack?.({ ok: true });
+      } catch (err) {
+        ack?.(errorResponse(err));
+      }
+    });
+
+    socket.on('turn:surpriseVote', async (payload, ack) => {
+      try {
+        const entry = requireEntry(socket);
+        const { targetId } = payload ?? {};
+        await runExclusive(entry, async () => {
+          const { room, effects } = submitSurpriseVote(entry.room, { voterId: socket.data.playerId, targetId });
+          await applyGameEffects(io, entry, room, effects);
+        });
+        ack?.({ ok: true });
+      } catch (err) {
+        ack?.(errorResponse(err));
+      }
+    });
+
     socket.on('recap:fetch', async (_, ack) => {
       try {
         const entry = requireEntry(socket);
@@ -543,10 +848,8 @@ export function registerSocketHandlers(io) {
         // Toujours reconstruit depuis turns/questions/users, jamais depuis le
         // cache mémoire du chat : c'est la source de vérité pour l'historique.
         const rows = await repo.fetchTurnsRecap(pool, entry.dbPartieId);
-        const votesRows = await repo.fetchVotesForTurns(
-          pool,
-          rows.map((r) => r.id)
-        );
+        const turnIds = rows.map((r) => r.id);
+        const votesRows = await repo.fetchVotesForTurns(pool, turnIds);
         const votesByTurn = new Map();
         for (const v of votesRows) {
           const agg = votesByTurn.get(v.turn_id) ?? { up: 0, down: 0 };
@@ -555,17 +858,42 @@ export function registerSocketHandlers(io) {
           votesByTurn.set(v.turn_id, agg);
         }
 
-        const turns = rows.map((r) => ({
-          turnNumber: r.numero,
-          playerId: String(r.player_id),
-          pseudo: r.pseudo,
-          type: r.type,
-          contenu: r.contenu,
-          answer: r.reponse,
-          points: r.points,
-          timedOut: r.status === 'timeout',
-          votes: votesByTurn.get(r.id) ?? { up: 0, down: 0 },
-        }));
+        // Un tour surprise a un détail par participant dans une table à part
+        // (plusieurs répondants pour un seul tour) : présent uniquement pour
+        // ces tours-là, ça sert justement à les distinguer d'un tour normal.
+        const surpriseRows = await repo.fetchTourSurpriseReponsesForTurns(pool, turnIds);
+        const surpriseByTurn = new Map();
+        for (const s of surpriseRows) {
+          const list = surpriseByTurn.get(s.turn_id) ?? [];
+          list.push({ playerId: String(s.player_id), pseudo: s.pseudo, answer: s.reponse, votesRecus: s.votes_recus, points: s.points });
+          surpriseByTurn.set(s.turn_id, list);
+        }
+
+        const turns = rows.map((r) => {
+          const surpriseResults = surpriseByTurn.get(r.id);
+          if (surpriseResults) {
+            return {
+              turnNumber: r.numero,
+              mode: 'surprise',
+              type: r.type,
+              contenu: r.contenu,
+              results: surpriseResults,
+            };
+          }
+          return {
+            turnNumber: r.numero,
+            mode: 'normal',
+            playerId: r.player_id != null ? String(r.player_id) : null,
+            pseudo: r.pseudo,
+            type: r.type,
+            contenu: r.contenu,
+            answer: r.reponse,
+            points: r.points,
+            timedOut: r.status === 'timeout',
+            refused: r.reponse == null && r.status === 'done' && r.points < 0,
+            votes: votesByTurn.get(r.id) ?? { up: 0, down: 0 },
+          };
+        });
 
         ack?.({ ok: true, turns });
       } catch (err) {

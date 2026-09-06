@@ -23,7 +23,16 @@ export async function loadRoomEntryFromDb(roomRow) {
   let currentTurnIndex = -1;
   let deadlineInfo = null;
 
-  if (latestTurn && (latestTurn.status === 'answering' || latestTurn.status === 'voting')) {
+  // Un tour surprise en cours (player_id encore null, résolu seulement à la
+  // fin) ne peut pas être reconstruit fidèlement : qui a déjà répondu/voté ne
+  // vit qu'en mémoire tant que le tour n'est pas résolu. Comme pour les
+  // pré-phases de règles (offre de double ou rien, choix parmi 3, jugement
+  // de pari), on l'affiche comme "aucun tour en cours" plutôt que d'inventer
+  // un état partiel — le tour suivant resynchronise tout le monde normalement.
+  const isLiveNormalTurn =
+    latestTurn && (latestTurn.status === 'answering' || latestTurn.status === 'voting') && latestTurn.player_id != null;
+
+  if (isLiveNormalTurn) {
     const votesRows = await repo.fetchVotesForTurn(pool, latestTurn.id);
     const votes = {};
     for (const v of votesRows) votes[String(v.voter_id)] = v.valeur === 1 ? 'up' : 'down';
@@ -31,6 +40,7 @@ export async function loadRoomEntryFromDb(roomRow) {
     const questionRow = await repo.fetchQuestionById(pool, latestTurn.question_id);
 
     currentTurn = {
+      mode: 'normal',
       turnNumber: latestTurn.numero,
       activePlayerId: String(latestTurn.player_id),
       type: questionRow?.type ?? null,
@@ -38,6 +48,12 @@ export async function loadRoomEntryFromDb(roomRow) {
       phase: latestTurn.status,
       answer: latestTurn.reponse,
       votes,
+      doubleOuRien: Boolean(latestTurn.double_ou_rien),
+      returned: latestTurn.returned_from_player_id != null,
+      originalPlayerId: latestTurn.returned_from_player_id != null ? String(latestTurn.returned_from_player_id) : null,
+      // Le pari en cours (texte, verdict) ne survit pas à une reconstruction :
+      // il n'est jamais persisté (donnée éphémère, voir game/turn.js).
+      pariMutuel: null,
     };
     currentTurnDbId = latestTurn.id;
     currentTurnIndex = turnOrder.indexOf(currentTurn.activePlayerId);
@@ -65,6 +81,24 @@ export async function loadRoomEntryFromDb(roomRow) {
     },
   };
 
+  const regles = repo.reglesFromRoomRow(roomRow);
+  if (regles.doubleOuRien && (roomRow.niveau_max ?? 1) < 3) {
+    const { questionPool: escaladeBank } = await repo.fetchQuestionBank(pool, {
+      niveauMax: (roomRow.niveau_max ?? 1) + 1,
+      langue: roomRow.langue ?? 'fr',
+    });
+    questionPool.escalade = {
+      verite: escaladeBank.verite.top.filter((id) => !usedQuestionIds.has(id)),
+      action: escaladeBank.action.top.filter((id) => !usedQuestionIds.has(id)),
+    };
+  } else {
+    questionPool.escalade = { verite: [], action: [] };
+  }
+
+  const questionRetourneeUsage = currentPartie
+    ? await repo.fetchRegleUsage(pool, currentPartie.id, 'questionRetournee')
+    : [];
+
   const room = {
     code: roomRow.code,
     hostId: String(roomRow.host_id),
@@ -79,6 +113,9 @@ export async function loadRoomEntryFromDb(roomRow) {
     questionPool,
     currentTurn,
     history: [],
+    regles,
+    reglesUsage: { questionRetournee: questionRetourneeUsage.map(String) },
+    forceQuestionChoice: false,
   };
 
   const messageRows = await repo.fetchRecentMessages(pool, roomRow.id, 30);

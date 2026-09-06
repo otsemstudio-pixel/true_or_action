@@ -1,7 +1,27 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRoom, addPlayer } from './room.js';
-import { startGame, submitAnswer, answerTimeout, submitVote, voteTimeout, handlePlayerLeft } from './turn.js';
+import { createRoom, addPlayer, effectiveRegles } from './room.js';
+import {
+  startGame,
+  submitAnswer,
+  answerTimeout,
+  submitVote,
+  voteTimeout,
+  handlePlayerLeft,
+  submitPass,
+  respondDoubleOuRien,
+  niveauChoiceTimeout,
+  chooseQuestion,
+  questionChoiceTimeout,
+  returnQuestion,
+  submitBet,
+  judgeBet,
+  judgeBetTimeout,
+  submitSurpriseAnswer,
+  surpriseAnswerTimeout,
+  submitSurpriseVote,
+  surpriseVoteTimeout,
+} from './turn.js';
 import { GameError } from './errors.js';
 
 function createSequenceRng(values) {
@@ -19,10 +39,18 @@ function createSequenceRng(values) {
 // consommée pour garder un nombre d'appels rng constant et prévisible.
 const BUCKET_DONT_CARE = 0.5;
 
-function pool({ veriteTop = [], veriteLower = [], actionTop = [], actionLower = [] } = {}) {
+function pool({
+  veriteTop = [],
+  veriteLower = [],
+  actionTop = [],
+  actionLower = [],
+  veriteEscalade = [],
+  actionEscalade = [],
+} = {}) {
   return {
     verite: { top: veriteTop, lower: veriteLower },
     action: { top: actionTop, lower: actionLower },
+    escalade: { verite: veriteEscalade, action: actionEscalade },
   };
 }
 
@@ -419,9 +447,12 @@ describe('handlePlayerLeft', () => {
     assert.equal(afterLeft.status, 'finished');
     assert.equal(afterLeft.currentTurn, null);
 
+    // Un CLEAR_TIMER par minuteur possible côté règles optionnelles (point 3),
+    // même si la plupart n'ont jamais été armés pour cette partie — les
+    // effacer est un no-op sûr côté sockets (voir timers.js).
     assert.deepEqual(
       effects.map((e) => e.type),
-      ['CLEAR_TIMER', 'CLEAR_TIMER', 'GAME_ENDED']
+      ['CLEAR_TIMER', 'CLEAR_TIMER', 'CLEAR_TIMER', 'CLEAR_TIMER', 'CLEAR_TIMER', 'GAME_ENDED']
     );
     const ended = effects.find((e) => e.type === 'GAME_ENDED');
     assert.equal(ended.reason, 'notEnoughPlayers');
@@ -440,5 +471,703 @@ describe('handlePlayerLeft', () => {
     assert.equal(afterLeft.status, 'waiting');
     assert.deepEqual(effects, []);
     assert.equal(afterLeft.players.find((p) => p.id === 'p3').status, 'left');
+  });
+});
+
+// =====================================================================
+// Point 3 — règles optionnelles
+// =====================================================================
+
+describe('règle A : le refus qui coûte', () => {
+  test('coûte 2 points et ouvre un choix parmi 3 questions pour le joueur suivant', () => {
+    const room = threePlayerRoom({ maxTurns: 5, regles: { refusCouteux: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]), // tour 1 : vérité -> v1
+    });
+    assert.equal(start.room.currentTurn.activePlayerId, 'p1');
+
+    const passed = submitPass(start.room, {
+      playerId: 'p1',
+      rng: createSequenceRng([
+        0.1, // type des propositions -> vérité
+        0.1, 0.0, // proposition 1 (top restant ['v2','v3','v4']) -> v2
+        0.1, 0.0, // proposition 2 (['v3','v4']) -> v3
+        0.1, 0.0, // proposition 3 (['v4']) -> v4
+      ]),
+    });
+
+    assert.equal(passed.room.players.find((p) => p.id === 'p1').score, -2);
+    assert.equal(passed.room.currentTurn.phase, 'question_choice');
+    assert.equal(passed.room.currentTurn.activePlayerId, 'p2');
+    assert.deepEqual(
+      passed.room.currentTurn.choices.map((c) => c.questionId),
+      ['v2', 'v3', 'v4']
+    );
+    assert.deepEqual(passed.effects.map((e) => e.type), [
+      'CLEAR_TIMER',
+      'PASS_SUBMITTED',
+      'QUESTION_CHOICE_OFFERED',
+      'START_TIMER',
+    ]);
+
+    const chosen = chooseQuestion(passed.room, { playerId: 'p2', questionId: 'v3' });
+    assert.equal(chosen.room.currentTurn.phase, 'answering');
+    assert.equal(chosen.room.currentTurn.questionId, 'v3');
+    assert.equal(chosen.room.currentTurn.type, 'verite');
+    // v2 et v4, non retenus, retournent dans le réservoir.
+    assert.ok(chosen.room.questionPool.verite.top.includes('v2'));
+    assert.ok(chosen.room.questionPool.verite.top.includes('v4'));
+  });
+
+  test('le total peut devenir négatif', () => {
+    const room = threePlayerRoom({ maxTurns: 5, regles: { refusCouteux: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    const passed = submitPass(start.room, {
+      playerId: 'p1',
+      rng: createSequenceRng([0.1, 0.1, 0.0, 0.1, 0.0, 0.1, 0.0]),
+    });
+    // p2 doit d'abord recevoir une question (choisie ou par timeout) avant de
+    // pouvoir à son tour refuser de répondre.
+    const chosenForP2 = questionChoiceTimeout(passed.room, { turnNumber: 2 });
+    assert.equal(chosenForP2.room.currentTurn.phase, 'answering');
+    const passed2 = submitPass(chosenForP2.room, { playerId: 'p2', rng: createSequenceRng([0.1, 0.1, 0.0, 0.1, 0.0, 0.1, 0.0]) });
+    // p2 refuse aussi son tour (score déjà à 0, -2 => -2) ; puis choix pour p3.
+    assert.equal(passed2.room.players.find((p) => p.id === 'p2').score, -2);
+    assert.equal(passed2.room.currentTurn.activePlayerId, 'p3');
+  });
+
+  test('timeout du choix parmi 3 : la première proposition est retenue', () => {
+    const room = threePlayerRoom({ maxTurns: 5, regles: { refusCouteux: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    const passed = submitPass(start.room, {
+      playerId: 'p1',
+      rng: createSequenceRng([0.1, 0.1, 0.0, 0.1, 0.0, 0.1, 0.0]), // choix: v2, v3, v4
+    });
+    const timedOut = questionChoiceTimeout(passed.room, { turnNumber: 2 });
+    assert.equal(timedOut.room.currentTurn.questionId, 'v2');
+    assert.equal(timedOut.room.currentTurn.phase, 'answering');
+  });
+
+  test('refuse si la règle n\'est pas activée', () => {
+    const room = threePlayerRoom({ maxTurns: 1 });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    assert.throws(() => submitPass(start.room, { playerId: 'p1' }), (err) => err.code === 'REGLE_DISABLED');
+  });
+
+  test("refuse si ce n'est pas le tour du joueur", () => {
+    const room = threePlayerRoom({ maxTurns: 1, regles: { refusCouteux: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    assert.throws(() => submitPass(start.room, { playerId: 'p2' }), (err) => err.code === 'NOT_YOUR_TURN');
+  });
+});
+
+describe('règle B : le double ou rien', () => {
+  test('offre le choix avant de révéler la question, si le niveau max le permet', () => {
+    const room = threePlayerRoom({ maxTurns: 3, niveauMax: 1, regles: { doubleOuRien: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'], veriteEscalade: ['ev1', 'ev2', 'ev3', 'ev4', 'ev5'], actionEscalade: ['ea1', 'ea2', 'ea3', 'ea4', 'ea5'] }),
+    });
+    assert.equal(start.room.currentTurn.phase, 'niveau_choice');
+    assert.equal(start.room.currentTurn.activePlayerId, 'p1');
+    assert.equal(start.room.currentTurn.questionId, null);
+    assert.deepEqual(start.effects.map((e) => e.type), ['NIVEAU_CHOICE_OFFERED', 'START_TIMER']);
+  });
+
+  test('refus : tour normal, niveau inchangé', () => {
+    const room = threePlayerRoom({ maxTurns: 3, niveauMax: 1, regles: { doubleOuRien: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'], veriteEscalade: ['ev1', 'ev2', 'ev3', 'ev4', 'ev5'] }),
+    });
+    const declined = respondDoubleOuRien(start.room, {
+      playerId: 'p1',
+      accept: false,
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    assert.equal(declined.room.currentTurn.phase, 'answering');
+    assert.equal(declined.room.currentTurn.doubleOuRien, false);
+    assert.equal(declined.room.currentTurn.questionId, 'v1');
+  });
+
+  test('timeout équivaut à un refus', () => {
+    const room = threePlayerRoom({ maxTurns: 3, niveauMax: 1, regles: { doubleOuRien: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }),
+    });
+    const timedOut = niveauChoiceTimeout(start.room, {
+      turnNumber: 1,
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    assert.equal(timedOut.room.currentTurn.doubleOuRien, false);
+    assert.equal(timedOut.room.currentTurn.questionId, 'v1');
+  });
+
+  test('acceptation : question du niveau supérieur, points doublés en cas de réponse', () => {
+    const room = threePlayerRoom({ maxTurns: 3, niveauMax: 1, regles: { doubleOuRien: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'], veriteEscalade: ['ev1', 'ev2', 'ev3', 'ev4', 'ev5'], actionEscalade: ['ea1', 'ea2', 'ea3', 'ea4', 'ea5'] }),
+    });
+    const accepted = respondDoubleOuRien(start.room, {
+      playerId: 'p1',
+      accept: true,
+      rng: createSequenceRng([0.1, 0.0]), // type vérité, index 0 dans l'escalade
+    });
+    assert.equal(accepted.room.currentTurn.doubleOuRien, true);
+    assert.equal(accepted.room.currentTurn.questionId, 'ev1');
+
+    const answered = submitAnswer(accepted.room, { playerId: 'p1', text: 'réponse' });
+    assert.equal(answered.room.currentTurn.phase, 'voting'); // 3 joueurs : vote normal
+    const resolved = voteTimeout(answered.room, { turnNumber: 1 });
+    const effect = resolved.effects.find((e) => e.type === 'TURN_RESOLVED');
+    assert.equal(effect.points, 2); // vérité (1) x2, aucun pouce (timeout de vote)
+    assert.equal(effect.doubleOuRien, true);
+  });
+
+  test('acceptation puis absence de réponse : zéro point', () => {
+    const room = threePlayerRoom({ maxTurns: 3, niveauMax: 1, regles: { doubleOuRien: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'], veriteEscalade: ['ev1', 'ev2', 'ev3', 'ev4', 'ev5'], actionEscalade: ['ea1', 'ea2', 'ea3', 'ea4', 'ea5'] }),
+    });
+    const accepted = respondDoubleOuRien(start.room, {
+      playerId: 'p1',
+      accept: true,
+      rng: createSequenceRng([0.1, 0.0]),
+    });
+    const timedOut = answerTimeout(accepted.room, { turnNumber: 1 });
+    const effect = timedOut.effects.find((e) => e.type === 'TURN_RESOLVED');
+    assert.equal(effect.points, 0);
+  });
+
+  test('indisponible si le salon est déjà au niveau maximum', () => {
+    const room = threePlayerRoom({ maxTurns: 1, niveauMax: 3, regles: { doubleOuRien: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    assert.equal(start.room.currentTurn.phase, 'answering');
+  });
+
+  test('sans question disponible au niveau supérieur, retombe silencieusement sur un tour normal', () => {
+    const room = threePlayerRoom({ maxTurns: 1, niveauMax: 1, regles: { doubleOuRien: true } });
+    const start = startGame(room, { questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }) });
+    const accepted = respondDoubleOuRien(start.room, {
+      playerId: 'p1',
+      accept: true,
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    assert.equal(accepted.room.currentTurn.doubleOuRien, false);
+    assert.equal(accepted.room.currentTurn.questionId, 'v1');
+  });
+
+  test('cas explicite — refus après un double ou rien accepté : zéro point, pas de conséquence', () => {
+    const room = threePlayerRoom({ maxTurns: 5, niveauMax: 1, regles: { doubleOuRien: true, refusCouteux: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'], veriteEscalade: ['ev1', 'ev2', 'ev3', 'ev4', 'ev5'], actionEscalade: ['ea1', 'ea2', 'ea3', 'ea4', 'ea5'] }),
+    });
+    const accepted = respondDoubleOuRien(start.room, {
+      playerId: 'p1',
+      accept: true,
+      rng: createSequenceRng([0.1, 0.0]),
+    });
+    const passed = submitPass(accepted.room, { playerId: 'p1' });
+    assert.equal(passed.room.players.find((p) => p.id === 'p1').score, 0);
+    assert.equal(passed.room.forceQuestionChoice, false);
+    // La règle double ou rien reste active : le tour suivant réoffre le choix.
+    assert.equal(passed.room.currentTurn.phase, 'niveau_choice');
+    assert.equal(passed.room.currentTurn.activePlayerId, 'p2');
+  });
+});
+
+describe('règle C : la question retournée', () => {
+  function setupWithPreviousVote() {
+    const room = threePlayerRoom({ maxTurns: 5, regles: { questionRetournee: true } });
+    const rng = createSequenceRng([
+      0.1, BUCKET_DONT_CARE, 0.0, // tour 1 : vérité -> v1 (p1 actif)
+      0.9, BUCKET_DONT_CARE, 0.0, // tour 2 : action -> a1 (p2 actif)
+    ]);
+    const start = startGame(room, { questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }), rng });
+    const answered1 = submitAnswer(start.room, { playerId: 'p1', text: 'réponse' });
+    const v1 = submitVote(answered1.room, { voterId: 'p2', vote: 'down', turnNumber: 1 });
+    const v2 = submitVote(v1.room, { voterId: 'p3', vote: 'up', turnNumber: 1, rng });
+    return v2.room; // tour 2, p2 actif, p3 a le mieux noté le tour 1
+  }
+
+  test('retourne la question au joueur qui a le mieux noté le tour précédent', () => {
+    const room = setupWithPreviousVote();
+    assert.equal(room.currentTurn.activePlayerId, 'p2');
+
+    const returned = returnQuestion(room, { playerId: 'p2' });
+    assert.equal(returned.room.currentTurn.activePlayerId, 'p3');
+    assert.equal(returned.room.currentTurn.returned, true);
+    assert.equal(returned.room.currentTurn.originalPlayerId, 'p2');
+    assert.deepEqual(returned.effects, [
+      { type: 'QUESTION_RETURNED', turnNumber: 2, fromPlayerId: 'p2', toPlayerId: 'p3' },
+    ]);
+    assert.deepEqual(returned.room.reglesUsage.questionRetournee, ['p2']);
+
+    // p3 répond désormais à la place de p2 ; les points iront à p3.
+    const answered = submitAnswer(returned.room, { playerId: 'p3', text: 'réponse de p3' });
+    assert.equal(answered.room.currentTurn.phase, 'voting');
+  });
+
+  test('le joueur qui reçoit la question ne peut pas la retourner à son tour', () => {
+    const room = setupWithPreviousVote();
+    const returned = returnQuestion(room, { playerId: 'p2' });
+    assert.throws(
+      () => returnQuestion(returned.room, { playerId: 'p3' }),
+      (err) => err.code === 'QUESTION_RETOURNEE_INDISPONIBLE'
+    );
+  });
+
+  test('une fois par partie et par joueur', () => {
+    const room = setupWithPreviousVote();
+    const roomWithUsage = { ...room, reglesUsage: { questionRetournee: ['p2'] } };
+    assert.throws(
+      () => returnQuestion(roomWithUsage, { playerId: 'p2' }),
+      (err) => err.code === 'QUESTION_RETOURNEE_INDISPONIBLE'
+    );
+  });
+
+  test('indisponible sans tour précédent', () => {
+    const room = threePlayerRoom({ maxTurns: 3, regles: { questionRetournee: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    assert.throws(
+      () => returnQuestion(start.room, { playerId: 'p1' }),
+      (err) => err.code === 'QUESTION_RETOURNEE_INDISPONIBLE'
+    );
+  });
+
+  test('indisponible à 2 joueurs (le vote y est toujours sauté, donc jamais de "mieux noté")', () => {
+    const room = twoPlayerRoom({ maxTurns: 3, regles: { questionRetournee: true } });
+    const rng = createSequenceRng([
+      0.1, BUCKET_DONT_CARE, 0.0,
+      0.9, BUCKET_DONT_CARE, 0.0,
+    ]);
+    const start = startGame(room, { questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }), rng });
+    const answered = submitAnswer(start.room, { playerId: 'p1', text: 'réponse' });
+    assert.equal(answered.room.currentTurn.turnNumber, 2); // résolu directement, tour 2 démarré
+    assert.throws(
+      () => returnQuestion(answered.room, { playerId: 'p2' }),
+      (err) => err.code === 'QUESTION_RETOURNEE_INDISPONIBLE'
+    );
+  });
+
+  test('indisponible sur une question de double ou rien', () => {
+    const room = threePlayerRoom({
+      maxTurns: 5,
+      niveauMax: 1,
+      regles: { questionRetournee: true, doubleOuRien: true },
+    });
+    // On simule directement un tour "doubleOuRien" avec un historique valable.
+    const base = threePlayerRoom({ maxTurns: 5, regles: { questionRetournee: true } });
+    const start = startGame(base, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0, 0.9, BUCKET_DONT_CARE, 0.0]),
+    });
+    const answered1 = submitAnswer(start.room, { playerId: 'p1', text: 'réponse' });
+    const v1 = submitVote(answered1.room, { voterId: 'p2', vote: 'down', turnNumber: 1 });
+    const v2 = submitVote(v1.room, { voterId: 'p3', vote: 'up', turnNumber: 1 });
+    const withDoubleOuRien = { ...v2.room, currentTurn: { ...v2.room.currentTurn, doubleOuRien: true } };
+    assert.throws(
+      () => returnQuestion(withDoubleOuRien, { playerId: 'p2' }),
+      (err) => err.code === 'QUESTION_RETOURNEE_INDISPONIBLE'
+    );
+  });
+
+  test("refuse si la règle n'est pas activée", () => {
+    const room = threePlayerRoom({ maxTurns: 1 });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    assert.throws(() => returnQuestion(start.room, { playerId: 'p1' }), (err) => err.code === 'REGLE_DISABLED');
+  });
+});
+
+describe('règle D : le tour surprise', () => {
+  test('un tirage sous le seuil déclenche un tour surprise pour tous les joueurs actifs', () => {
+    const room = threePlayerRoom({ maxTurns: 3, regles: { tourSurprise: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }),
+      rng: createSequenceRng([0.1, 0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    assert.equal(start.room.currentTurn.mode, 'surprise');
+    assert.deepEqual(start.room.currentTurn.activePlayerIds, ['p1', 'p2', 'p3']);
+    assert.equal(start.room.currentTurn.questionId, 'v1');
+    assert.deepEqual(start.effects.map((e) => e.type), ['TURN_STARTED', 'START_TIMER']);
+  });
+
+  test('un tirage au-dessus du seuil reste un tour normal', () => {
+    const room = threePlayerRoom({ maxTurns: 3, regles: { tourSurprise: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }),
+      rng: createSequenceRng([0.5, 0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    assert.equal(start.room.currentTurn.mode, 'normal');
+  });
+
+  test('cycle complet : réponses, votes, 3 points au gagnant, 1 aux autres répondants', () => {
+    const room = threePlayerRoom({ maxTurns: 2, regles: { tourSurprise: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }),
+      rng: createSequenceRng([0.1, 0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+
+    const a1 = submitSurpriseAnswer(start.room, { playerId: 'p1', text: 'rep1' });
+    assert.deepEqual(a1.effects.map((e) => e.type), ['SURPRISE_ANSWER_SUBMITTED']);
+    const a2 = submitSurpriseAnswer(a1.room, { playerId: 'p2', text: 'rep2' });
+    const a3 = submitSurpriseAnswer(a2.room, { playerId: 'p3', text: 'rep3' });
+    assert.equal(a3.room.currentTurn.phase, 'voting');
+    assert.deepEqual(a3.effects.map((e) => e.type), [
+      'SURPRISE_ANSWER_SUBMITTED',
+      'CLEAR_TIMER',
+      'SURPRISE_VOTING_STARTED',
+      'START_TIMER',
+    ]);
+
+    const v1 = submitSurpriseVote(a3.room, { voterId: 'p1', targetId: 'p3' });
+    const v2 = submitSurpriseVote(v1.room, { voterId: 'p2', targetId: 'p3' });
+    const v3 = submitSurpriseVote(v2.room, { voterId: 'p3', targetId: 'p1' });
+    const resolved = v3.effects.find((e) => e.type === 'SURPRISE_RESOLVED');
+    assert.deepEqual(resolved.winnerIds, ['p3']);
+
+    const scores = Object.fromEntries(v3.room.players.map((p) => [p.id, p.score]));
+    assert.equal(scores.p3, 3);
+    assert.equal(scores.p1, 1);
+    assert.equal(scores.p2, 1);
+  });
+
+  test("un joueur qui n'a pas répondu ne peut pas recevoir de vote, et marque 0", () => {
+    const room = threePlayerRoom({ maxTurns: 1, regles: { tourSurprise: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }),
+      rng: createSequenceRng([0.1, 0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    const a1 = submitSurpriseAnswer(start.room, { playerId: 'p1', text: 'rep1' });
+    const timedOut = surpriseAnswerTimeout(a1.room, { turnNumber: 1 });
+    assert.equal(timedOut.room.currentTurn.phase, 'voting');
+
+    assert.throws(
+      () => submitSurpriseVote(timedOut.room, { voterId: 'p1', targetId: 'p2' }),
+      (err) => err.code === 'SURPRISE_VOTE_INVALID'
+    );
+
+    const v = submitSurpriseVote(timedOut.room, { voterId: 'p2', targetId: 'p1' });
+    const resolved = surpriseVoteTimeout(v.room, { turnNumber: 1 });
+    const effect = resolved.effects.find((e) => e.type === 'SURPRISE_RESOLVED');
+    const scores = Object.fromEntries(effect.results.map((r) => [r.playerId, r.points]));
+    assert.equal(scores.p1, 3);
+    assert.equal(scores.p2, 0);
+    assert.equal(scores.p3, 0);
+  });
+
+  test('une égalité de votes fait gagner tous les joueurs à égalité', () => {
+    const room = threePlayerRoom({ maxTurns: 1, regles: { tourSurprise: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }),
+      rng: createSequenceRng([0.1, 0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    const a1 = submitSurpriseAnswer(start.room, { playerId: 'p1', text: 'r1' });
+    const a2 = submitSurpriseAnswer(a1.room, { playerId: 'p2', text: 'r2' });
+    const a3 = submitSurpriseAnswer(a2.room, { playerId: 'p3', text: 'r3' });
+    const v1 = submitSurpriseVote(a3.room, { voterId: 'p1', targetId: 'p2' });
+    const v2 = submitSurpriseVote(v1.room, { voterId: 'p2', targetId: 'p3' });
+    const v3 = submitSurpriseVote(v2.room, { voterId: 'p3', targetId: 'p1' });
+    const resolved = v3.effects.find((e) => e.type === 'SURPRISE_RESOLVED');
+    assert.deepEqual(resolved.winnerIds.sort(), ['p1', 'p2', 'p3']);
+    const scores = Object.fromEntries(v3.room.players.map((p) => [p.id, p.score]));
+    assert.equal(scores.p1, 3);
+    assert.equal(scores.p2, 3);
+    assert.equal(scores.p3, 3);
+  });
+
+  test('cas explicite — le refus est indisponible pendant un tour surprise', () => {
+    const room = threePlayerRoom({ maxTurns: 1, regles: { tourSurprise: true, refusCouteux: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }),
+      rng: createSequenceRng([0.1, 0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    assert.throws(() => submitPass(start.room, { playerId: 'p1' }), (err) => err.code === 'INVALID_PHASE');
+  });
+
+  test('cas explicite — la question retournée est indisponible quand le tour précédent était surprise', () => {
+    const room = threePlayerRoom({ maxTurns: 5, regles: { tourSurprise: true, questionRetournee: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }),
+      rng: createSequenceRng([0.1, 0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    const a1 = submitSurpriseAnswer(start.room, { playerId: 'p1', text: 'r1' });
+    const a2 = submitSurpriseAnswer(a1.room, { playerId: 'p2', text: 'r2' });
+    const a3 = submitSurpriseAnswer(a2.room, { playerId: 'p3', text: 'r3' });
+    // Tour surprise forcé à se résoudre sans déclencher un second tour surprise,
+    // pour observer un tour normal juste après un tour surprise.
+    const forcedNormalRoom = { ...a3.room };
+    const v1 = submitSurpriseVote(forcedNormalRoom, { voterId: 'p1', targetId: 'p2' });
+    const v2 = submitSurpriseVote(v1.room, { voterId: 'p2', targetId: 'p3' });
+    const v3 = submitSurpriseVote(v2.room, {
+      voterId: 'p3',
+      targetId: 'p1',
+      rng: createSequenceRng([0.9, 0.1, BUCKET_DONT_CARE, 0.0]), // pas de 2e tour surprise, tour normal
+    });
+    if (v3.room.currentTurn?.mode === 'normal') {
+      assert.throws(
+        () => returnQuestion(v3.room, { playerId: v3.room.currentTurn.activePlayerId }),
+        (err) => err.code === 'QUESTION_RETOURNEE_INDISPONIBLE'
+      );
+    }
+  });
+
+  test('à 2 joueurs avec pari mutuel actif, aucun tour surprise n\'est jamais tiré', () => {
+    const room = twoPlayerRoom({ maxTurns: 1, regles: { tourSurprise: true, pariMutuel: true } });
+    // 0.01 aurait déclenché un tour surprise (< 0.2) si la porte n'était pas fermée ;
+    // ici elle est consommée directement comme type de tirage normal.
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }),
+      rng: createSequenceRng([0.01, BUCKET_DONT_CARE, 0.0]),
+    });
+    assert.equal(start.room.currentTurn.mode, 'normal');
+  });
+});
+
+describe('règle E : le pari mutuel (2 joueurs uniquement)', () => {
+  test('le parieur dépose un pari, jugé par le joueur actif une fois sa réponse envoyée', () => {
+    const room = twoPlayerRoom({ maxTurns: 2, regles: { pariMutuel: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    assert.equal(start.room.currentTurn.activePlayerId, 'p1');
+
+    const bet = submitBet(start.room, { playerId: 'p2', text: 'Il va dire une bêtise' });
+    assert.equal(bet.room.currentTurn.pariMutuel.bet, 'Il va dire une bêtise');
+    assert.deepEqual(bet.effects, []);
+
+    const answered = submitAnswer(bet.room, { playerId: 'p1', text: 'une bêtise, en effet' });
+    assert.equal(answered.room.currentTurn.phase, 'jugement');
+    assert.deepEqual(answered.effects.map((e) => e.type), [
+      'CLEAR_TIMER',
+      'ANSWER_SUBMITTED',
+      'JUGEMENT_STARTED',
+      'START_TIMER',
+    ]);
+
+    const judged = judgeBet(answered.room, { playerId: 'p1', verdict: 'juste' });
+    const resolvedEffect = judged.effects.find((e) => e.type === 'TURN_RESOLVED');
+    assert.equal(resolvedEffect.pariMutuel.points, 2);
+    assert.equal(judged.room.players.find((p) => p.id === 'p2').score, 2);
+    assert.equal(judged.room.players.find((p) => p.id === 'p1').score, 1);
+  });
+
+  test('verdict "à côté" : aucun point pour le parieur', () => {
+    const room = twoPlayerRoom({ maxTurns: 2, regles: { pariMutuel: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    const bet = submitBet(start.room, { playerId: 'p2', text: 'un pari' });
+    const answered = submitAnswer(bet.room, { playerId: 'p1', text: 'réponse' });
+    const judged = judgeBet(answered.room, { playerId: 'p1', verdict: 'a_cote' });
+    const resolvedEffect = judged.effects.find((e) => e.type === 'TURN_RESOLVED');
+    assert.equal(resolvedEffect.pariMutuel.points, 0);
+    assert.equal(judged.room.players.find((p) => p.id === 'p2').score, 0);
+  });
+
+  test('timeout du jugement équivaut à "à côté"', () => {
+    const room = twoPlayerRoom({ maxTurns: 2, regles: { pariMutuel: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    const bet = submitBet(start.room, { playerId: 'p2', text: 'un pari' });
+    const answered = submitAnswer(bet.room, { playerId: 'p1', text: 'réponse' });
+    const timedOut = judgeBetTimeout(answered.room, { turnNumber: 1 });
+    const effect = timedOut.effects.find((e) => e.type === 'TURN_RESOLVED');
+    assert.equal(effect.pariMutuel.points, 0);
+  });
+
+  test('sans pari déposé, résout normalement sans phase de jugement', () => {
+    const room = twoPlayerRoom({ maxTurns: 1, regles: { pariMutuel: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    const answered = submitAnswer(start.room, { playerId: 'p1', text: 'réponse' });
+    assert.deepEqual(answered.effects.map((e) => e.type), [
+      'CLEAR_TIMER',
+      'ANSWER_SUBMITTED',
+      'TURN_RESOLVED',
+      'GAME_ENDED',
+    ]);
+  });
+
+  test('le joueur actif ne peut pas parier sur sa propre réponse', () => {
+    const room = twoPlayerRoom({ maxTurns: 1, regles: { pariMutuel: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    assert.throws(
+      () => submitBet(start.room, { playerId: 'p1', text: '...' }),
+      (err) => err.code === 'PARI_MUTUEL_INDISPONIBLE'
+    );
+  });
+
+  test('indisponible au-delà de 2 joueurs', () => {
+    const room = threePlayerRoom({ maxTurns: 1, regles: { pariMutuel: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12', 'v13', 'v14', 'v15', 'v16', 'v17', 'v18', 'v19', 'v20'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    assert.throws(
+      () => submitBet(start.room, { playerId: 'p2', text: '...' }),
+      (err) => err.code === 'REGLE_DISABLED'
+    );
+  });
+});
+
+// ---------- Simulations combinées (toutes les règles ensemble) ----------
+
+function driveSurpriseStep(current, turn) {
+  if (turn.phase === 'answering') {
+    const next = turn.activePlayerIds.find((id) => turn.answers[id] == null);
+    if (next) return submitSurpriseAnswer(current, { playerId: next, text: 'réponse surprise' }).room;
+    return surpriseAnswerTimeout(current, { turnNumber: turn.turnNumber }).room;
+  }
+  if (turn.phase === 'voting') {
+    const next = turn.activePlayerIds.find((id) => !turn.votes[id]);
+    if (next) {
+      const candidates = turn.activePlayerIds.filter((id) => id !== next && turn.answers[id] != null);
+      if (candidates.length === 0) {
+        return surpriseVoteTimeout(current, { turnNumber: turn.turnNumber }).room;
+      }
+      const target = candidates[Math.floor(Math.random() * candidates.length)];
+      return submitSurpriseVote(current, { voterId: next, targetId: target }).room;
+    }
+    return surpriseVoteTimeout(current, { turnNumber: turn.turnNumber }).room;
+  }
+  return current;
+}
+
+// Joue une partie jusqu'au bout en prenant, à chaque étape, une action valide
+// pour la phase en cours (avec un vrai hasard pour les décisions de règles) —
+// but : vérifier que la combinaison des cinq règles ne casse jamais le jeu,
+// quelle que soit la séquence d'événements réellement rencontrée.
+function driveGameToCompletion(room, { maxSteps = 1000 } = {}) {
+  let current = room;
+  let steps = 0;
+  while (current.status === 'playing' && steps < maxSteps) {
+    steps++;
+    const turn = current.currentTurn;
+    if (!turn) break;
+
+    if (turn.mode === 'surprise') {
+      current = driveSurpriseStep(current, turn);
+      continue;
+    }
+
+    const regles = effectiveRegles(current);
+
+    if (turn.phase === 'niveau_choice') {
+      current = respondDoubleOuRien(current, { playerId: turn.activePlayerId, accept: Math.random() < 0.5 }).room;
+    } else if (turn.phase === 'question_choice') {
+      const choice = turn.choices[Math.floor(Math.random() * turn.choices.length)];
+      current = chooseQuestion(current, { playerId: turn.activePlayerId, questionId: choice.questionId }).room;
+    } else if (turn.phase === 'answering') {
+      if (regles.pariMutuel && turn.pariMutuel && turn.pariMutuel.bet == null && Math.random() < 0.5) {
+        const bettorId = current.turnOrder.find((id) => id !== turn.activePlayerId);
+        current = submitBet(current, { playerId: bettorId, text: 'pari' }).room;
+      } else if (regles.refusCouteux && Math.random() < 0.1) {
+        current = submitPass(current, { playerId: turn.activePlayerId }).room;
+      } else if (regles.questionRetournee && !turn.returned && !turn.doubleOuRien && Math.random() < 0.1) {
+        try {
+          current = returnQuestion(current, { playerId: turn.activePlayerId }).room;
+        } catch {
+          current = submitAnswer(current, { playerId: turn.activePlayerId, text: 'réponse' }).room;
+        }
+      } else {
+        current = submitAnswer(current, { playerId: turn.activePlayerId, text: 'réponse' }).room;
+      }
+    } else if (turn.phase === 'jugement') {
+      current = judgeBet(current, { playerId: turn.activePlayerId, verdict: Math.random() < 0.5 ? 'juste' : 'a_cote' }).room;
+    } else if (turn.phase === 'voting') {
+      const nextVoter = current.players.find(
+        (p) => p.id !== turn.activePlayerId && p.status !== 'left' && !turn.votes[p.id]
+      );
+      if (nextVoter) {
+        current = submitVote(current, {
+          voterId: nextVoter.id,
+          vote: Math.random() < 0.5 ? 'up' : 'down',
+          turnNumber: turn.turnNumber,
+        }).room;
+      } else {
+        current = voteTimeout(current, { turnNumber: turn.turnNumber }).room;
+      }
+    } else {
+      break;
+    }
+  }
+  return current;
+}
+
+function bigPool() {
+  return pool({
+    veriteTop: Array.from({ length: 60 }, (_, i) => `v${i}`),
+    actionTop: Array.from({ length: 60 }, (_, i) => `a${i}`),
+    veriteEscalade: Array.from({ length: 30 }, (_, i) => `ev${i}`),
+    actionEscalade: Array.from({ length: 30 }, (_, i) => `ea${i}`),
+  });
+}
+
+const ALL_REGLES = {
+  refusCouteux: true,
+  doubleOuRien: true,
+  questionRetournee: true,
+  tourSurprise: true,
+  pariMutuel: true,
+};
+
+describe('simulations combinant les cinq règles', () => {
+  test('à 2 joueurs, la partie se termine toujours proprement, quelle que soit la séquence tirée', () => {
+    for (let trial = 0; trial < 40; trial++) {
+      const room = twoPlayerRoom({ maxTurns: 10, regles: ALL_REGLES });
+      const start = startGame(room, { questionPool: bigPool() });
+      const final = driveGameToCompletion(start.room);
+      assert.equal(final.status, 'finished', `essai ${trial} non terminé`);
+      for (const p of final.players) {
+        assert.equal(Number.isFinite(p.score), true, `score non fini pour ${p.id} à l'essai ${trial}`);
+      }
+    }
+  });
+
+  test('à 5 joueurs, quatre règles actives (pari mutuel réservé à 2) : aucun crash', () => {
+    for (let trial = 0; trial < 40; trial++) {
+      let room = createRoom({ code: 'ABCD', hostId: 'p1', hostPseudo: 'A', maxTurns: 10, regles: ALL_REGLES });
+      room = addPlayer(room, { id: 'p2', pseudo: 'B' });
+      room = addPlayer(room, { id: 'p3', pseudo: 'C' });
+      room = addPlayer(room, { id: 'p4', pseudo: 'D' });
+      room = addPlayer(room, { id: 'p5', pseudo: 'E' });
+
+      const start = startGame(room, { questionPool: bigPool() });
+      const final = driveGameToCompletion(start.room);
+      assert.equal(final.status, 'finished', `essai ${trial} non terminé`);
+      for (const p of final.players) {
+        assert.equal(Number.isFinite(p.score), true, `score non fini pour ${p.id} à l'essai ${trial}`);
+      }
+    }
   });
 });

@@ -10,7 +10,43 @@ export async function insertRoom(db, { code, hostId, maxTurns, targetScore, time
      VALUES ($1, $2, 'waiting', $3, $4, $5, $6, $7) RETURNING id`,
     [code, hostId, maxTurns, targetScore, timeoutSec, voteSec, langue]
   );
-  return res.rows[0].id;
+  const roomId = res.rows[0].id;
+  // Les règles démarrent toutes désactivées (valeur par défaut des colonnes) ;
+  // l'hôte les active ensuite depuis le salon d'attente.
+  return roomId;
+}
+
+// Règles optionnelles (point 3) : toujours les cinq colonnes à la fois — le
+// pur (game/room.js) a déjà fait la fusion partielle et la validation, cette
+// couche ne fait qu'écrire l'objet complet qui en résulte.
+export async function updateRoomRegles(db, roomId, regles) {
+  await db.query(
+    `UPDATE rooms SET
+       regle_refus_couteux = $1,
+       regle_double_ou_rien = $2,
+       regle_question_retournee = $3,
+       regle_tour_surprise = $4,
+       regle_pari_mutuel = $5
+     WHERE id = $6`,
+    [
+      regles.refusCouteux,
+      regles.doubleOuRien,
+      regles.questionRetournee,
+      regles.tourSurprise,
+      regles.pariMutuel,
+      roomId,
+    ]
+  );
+}
+
+export function reglesFromRoomRow(row) {
+  return {
+    refusCouteux: row.regle_refus_couteux ?? false,
+    doubleOuRien: row.regle_double_ou_rien ?? false,
+    questionRetournee: row.regle_question_retournee ?? false,
+    tourSurprise: row.regle_tour_surprise ?? false,
+    pariMutuel: row.regle_pari_mutuel ?? false,
+  };
 }
 
 export async function updateRoomSettings(db, roomId, { maxTurns, targetScore }) {
@@ -144,13 +180,23 @@ export async function fetchRoomPlayers(db, roomId) {
 
 // --- turns ---
 
-export async function insertTurn(db, { roomId, partieId, playerId, questionId, numero, deadline }) {
+export async function insertTurn(db, { roomId, partieId, playerId, questionId, numero, deadline, doubleOuRien = false }) {
   const res = await db.query(
-    `INSERT INTO turns (room_id, partie_id, player_id, question_id, numero, status, deadline)
-     VALUES ($1, $2, $3, $4, $5, 'answering', $6) RETURNING id`,
-    [roomId, partieId, playerId, questionId, numero, deadline]
+    `INSERT INTO turns (room_id, partie_id, player_id, question_id, numero, status, deadline, double_ou_rien)
+     VALUES ($1, $2, $3, $4, $5, 'answering', $6, $7) RETURNING id`,
+    [roomId, partieId, playerId, questionId, numero, deadline, doubleOuRien]
   );
   return res.rows[0].id;
+}
+
+// Règle C : la question a changé de mains — le nouveau répondant (celui qui
+// marquera les points) devient player_id, l'original est tracé à part.
+export async function updateTurnReturned(db, turnId, { newPlayerId, returnedFromPlayerId }) {
+  await db.query('UPDATE turns SET player_id = $1, returned_from_player_id = $2 WHERE id = $3', [
+    newPlayerId,
+    returnedFromPlayerId,
+    turnId,
+  ]);
 }
 
 export async function updateTurnAnswered(db, turnId, { reponse, voteDeadline }) {
@@ -164,6 +210,72 @@ export async function updateTurnAnswered(db, turnId, { reponse, voteDeadline }) 
 
 export async function updateTurnResolved(db, turnId, { status, points }) {
   await db.query('UPDATE turns SET status = $1, points = $2 WHERE id = $3', [status, points, turnId]);
+}
+
+// Tour surprise (règle D) : au moment du tirage, aucun joueur unique n'est
+// encore "le" répondant — player_id/reponse ne sont connus qu'à la
+// résolution (le gagnant, ou null en cas d'égalité à zéro vote). Le détail
+// par participant vit dans tour_surprise_reponses, pas dans turns.
+export async function updateTurnSurpriseResolved(db, turnId, { playerId, reponse, points, status }) {
+  await db.query('UPDATE turns SET status = $1, points = $2, player_id = $3, reponse = $4 WHERE id = $5', [
+    status,
+    points,
+    playerId,
+    reponse,
+    turnId,
+  ]);
+}
+
+export async function insertTourSurpriseReponses(db, turnId, results) {
+  for (const r of results) {
+    await db.query(
+      `INSERT INTO tour_surprise_reponses (turn_id, player_id, reponse, votes_recus, points)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (turn_id, player_id) DO NOTHING`,
+      [turnId, Number(r.playerId), r.answer, r.votesRecus, r.points]
+    );
+  }
+}
+
+export async function fetchTourSurpriseReponses(db, turnId) {
+  const res = await db.query(
+    `SELECT tsr.player_id, u.pseudo, tsr.reponse, tsr.votes_recus, tsr.points
+     FROM tour_surprise_reponses tsr JOIN users u ON u.id = tsr.player_id
+     WHERE tsr.turn_id = $1 ORDER BY tsr.points DESC, tsr.votes_recus DESC`,
+    [turnId]
+  );
+  return res.rows;
+}
+
+export async function fetchTourSurpriseReponsesForTurns(db, turnIds) {
+  if (turnIds.length === 0) return [];
+  const res = await db.query(
+    `SELECT tsr.turn_id, tsr.player_id, u.pseudo, tsr.reponse, tsr.votes_recus, tsr.points
+     FROM tour_surprise_reponses tsr JOIN users u ON u.id = tsr.player_id
+     WHERE tsr.turn_id = ANY($1) ORDER BY tsr.turn_id, tsr.points DESC, tsr.votes_recus DESC`,
+    [turnIds]
+  );
+  return res.rows;
+}
+
+// Règles à usage limité (point 3) : "ce joueur a déjà utilisé cette règle
+// dans cette partie". Générique, réutilisable au-delà de la question
+// retournée si d'autres règles à usage unique apparaissent plus tard.
+export async function insertRegleUsage(db, { partieId, playerId, regle, turnId = null }) {
+  await db.query(
+    `INSERT INTO regle_usages (partie_id, player_id, regle, turn_id)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (partie_id, player_id, regle) DO NOTHING`,
+    [partieId, playerId, regle, turnId]
+  );
+}
+
+export async function fetchRegleUsage(db, partieId, regle) {
+  const res = await db.query('SELECT player_id FROM regle_usages WHERE partie_id = $1 AND regle = $2', [
+    partieId,
+    regle,
+  ]);
+  return res.rows.map((r) => r.player_id);
 }
 
 export async function fetchLatestTurn(db, partieId) {
@@ -183,7 +295,7 @@ export async function fetchTurnsRecap(db, partieId) {
   const res = await db.query(
     `SELECT t.id, t.numero, t.player_id, u.pseudo, q.type, q.contenu, t.reponse, t.points, t.status
      FROM turns t
-     JOIN users u ON u.id = t.player_id
+     LEFT JOIN users u ON u.id = t.player_id
      LEFT JOIN questions q ON q.id = t.question_id
      WHERE t.partie_id = $1 AND t.status IN ('done', 'timeout')
      ORDER BY t.numero ASC`,

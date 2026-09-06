@@ -4,6 +4,14 @@ import { useAuth } from './useAuth.jsx';
 
 const RoomContext = createContext(null);
 
+const DEFAULT_REGLES = {
+  refusCouteux: false,
+  doubleOuRien: false,
+  questionRetournee: false,
+  tourSurprise: false,
+  pariMutuel: false,
+};
+
 const initialState = {
   code: null,
   status: 'idle', // idle | waiting | playing | finished
@@ -11,6 +19,7 @@ const initialState = {
   settings: null,
   niveauMax: 1,
   langue: 'fr',
+  regles: DEFAULT_REGLES,
   partieId: null,
   players: [],
   turnNumber: 0,
@@ -32,6 +41,7 @@ function snapshotToState(snapshot) {
     settings: snapshot.settings,
     niveauMax: snapshot.niveauMax,
     langue: snapshot.langue ?? 'fr',
+    regles: snapshot.regles ?? DEFAULT_REGLES,
     partieId: snapshot.partieId ?? null,
     players: snapshot.players,
     turnNumber: snapshot.turnNumber,
@@ -59,6 +69,49 @@ function emitWithAck(event, payload) {
       resolve(response);
     });
   });
+}
+
+// Construit l'état "currentTurn" côté client à partir d'un turn:started —
+// deux formes distinctes selon le mode, pour éviter des champs à moitié
+// pertinents dans un sens comme dans l'autre.
+function currentTurnFromStarted(payload) {
+  if (payload.mode === 'surprise') {
+    return {
+      mode: 'surprise',
+      turnNumber: payload.turnNumber,
+      activePlayerIds: payload.activePlayerIds,
+      type: payload.type,
+      questionId: payload.questionId,
+      contenu: payload.contenu,
+      phase: 'answering',
+      answeredPlayerIds: [],
+      answers: null,
+      votes: {},
+      answerDeadline: payload.answerDeadline,
+      voteDeadline: null,
+    };
+  }
+  return {
+    mode: 'normal',
+    turnNumber: payload.turnNumber,
+    activePlayerId: payload.activePlayerId,
+    type: payload.type,
+    questionId: payload.questionId,
+    contenu: payload.contenu,
+    phase: 'answering',
+    answer: null,
+    votes: {},
+    doubleOuRien: Boolean(payload.doubleOuRien),
+    returned: false,
+    originalPlayerId: null,
+    pariMutuel: null,
+    choices: null,
+    answerDeadline: payload.answerDeadline,
+    voteDeadline: null,
+    niveauChoiceDeadline: null,
+    questionChoiceDeadline: null,
+    jugementDeadline: null,
+  };
 }
 
 export function RoomProvider({ children }) {
@@ -96,6 +149,9 @@ export function RoomProvider({ children }) {
     function onLangue({ langue }) {
       setRoom((prev) => (prev.status === 'idle' ? prev : { ...prev, langue }));
     }
+    function onRegles({ regles }) {
+      setRoom((prev) => (prev.status === 'idle' ? prev : { ...prev, regles }));
+    }
     function onGameStarted({ snapshot }) {
       setRoom(snapshotToState(snapshot));
     }
@@ -106,18 +162,7 @@ export function RoomProvider({ children }) {
       setRoom((prev) => ({
         ...prev,
         turnNumber: payload.turnNumber,
-        currentTurn: {
-          turnNumber: payload.turnNumber,
-          activePlayerId: payload.activePlayerId,
-          type: payload.type,
-          questionId: payload.questionId,
-          contenu: payload.contenu,
-          phase: 'answering',
-          answer: null,
-          votes: {},
-          answerDeadline: payload.answerDeadline,
-          voteDeadline: null,
-        },
+        currentTurn: currentTurnFromStarted(payload),
       }));
     }
     function onTurnAnswered(payload) {
@@ -147,6 +192,23 @@ export function RoomProvider({ children }) {
       });
     }
     function onTurnResolved(payload) {
+      if (payload.mode === 'surprise') {
+        setRoom((prev) => ({
+          ...prev,
+          players: payload.players,
+          lastResult: {
+            turnNumber: payload.turnNumber,
+            mode: 'surprise',
+            results: payload.results,
+            winnerIds: payload.winnerIds,
+          },
+          currentTurn:
+            prev.currentTurn && prev.currentTurn.turnNumber === payload.turnNumber
+              ? { ...prev.currentTurn, phase: 'resolved' }
+              : prev.currentTurn,
+        }));
+        return;
+      }
       setRoom((prev) => {
         // Un timeout ne produit jamais de message (rien n'a été répondu) :
         // seuls les messages déjà marqués pour ce tour sont mis à jour.
@@ -161,15 +223,146 @@ export function RoomProvider({ children }) {
           players: payload.players,
           lastResult: {
             turnNumber: payload.turnNumber,
+            mode: 'normal',
             playerId: payload.playerId,
             points: payload.points,
             votes: payload.votes,
+            pariMutuel: payload.pariMutuel ?? null,
           },
           currentTurn:
             prev.currentTurn && prev.currentTurn.turnNumber === payload.turnNumber
               ? { ...prev.currentTurn, phase: 'resolved' }
               : prev.currentTurn,
           messages,
+        };
+      });
+    }
+    function onTurnPassed(payload) {
+      setRoom((prev) => ({
+        ...prev,
+        players: payload.players,
+        lastResult: { turnNumber: payload.turnNumber, mode: 'refus', playerId: payload.playerId, points: payload.points },
+        currentTurn:
+          prev.currentTurn && prev.currentTurn.turnNumber === payload.turnNumber
+            ? { ...prev.currentTurn, phase: 'resolved' }
+            : prev.currentTurn,
+      }));
+    }
+    function onQuestionChoiceOffered(payload) {
+      setRoom((prev) => ({
+        ...prev,
+        turnNumber: payload.turnNumber,
+        currentTurn: {
+          mode: 'normal',
+          turnNumber: payload.turnNumber,
+          activePlayerId: payload.activePlayerId,
+          type: null,
+          questionId: null,
+          contenu: null,
+          phase: 'question_choice',
+          answer: null,
+          votes: {},
+          doubleOuRien: false,
+          returned: false,
+          originalPlayerId: null,
+          pariMutuel: null,
+          choices: payload.choices,
+          answerDeadline: null,
+          voteDeadline: null,
+          niveauChoiceDeadline: null,
+          questionChoiceDeadline: payload.deadline,
+          jugementDeadline: null,
+        },
+      }));
+    }
+    function onNiveauChoiceOffered(payload) {
+      setRoom((prev) => ({
+        ...prev,
+        turnNumber: payload.turnNumber,
+        currentTurn: {
+          mode: 'normal',
+          turnNumber: payload.turnNumber,
+          activePlayerId: payload.activePlayerId,
+          type: null,
+          questionId: null,
+          contenu: null,
+          phase: 'niveau_choice',
+          answer: null,
+          votes: {},
+          doubleOuRien: false,
+          returned: false,
+          originalPlayerId: null,
+          pariMutuel: null,
+          choices: null,
+          answerDeadline: null,
+          voteDeadline: null,
+          niveauChoiceDeadline: payload.deadline,
+          questionChoiceDeadline: null,
+          jugementDeadline: null,
+        },
+      }));
+    }
+    function onQuestionReturned(payload) {
+      setRoom((prev) => {
+        if (!prev.currentTurn || prev.currentTurn.turnNumber !== payload.turnNumber) return prev;
+        return {
+          ...prev,
+          currentTurn: {
+            ...prev.currentTurn,
+            activePlayerId: payload.toPlayerId,
+            returned: true,
+            originalPlayerId: payload.fromPlayerId,
+          },
+        };
+      });
+    }
+    function onJugementStarted(payload) {
+      setRoom((prev) => {
+        if (!prev.currentTurn || prev.currentTurn.turnNumber !== payload.turnNumber) return prev;
+        return {
+          ...prev,
+          currentTurn: {
+            ...prev.currentTurn,
+            phase: 'jugement',
+            pariMutuel: { bettorId: payload.bettorId, bet: payload.bet, verdict: null },
+            jugementDeadline: payload.deadline,
+          },
+        };
+      });
+    }
+    function onSurpriseAnswered(payload) {
+      setRoom((prev) => {
+        if (!prev.currentTurn || prev.currentTurn.turnNumber !== payload.turnNumber) return prev;
+        return {
+          ...prev,
+          currentTurn: {
+            ...prev.currentTurn,
+            answeredPlayerIds: [...new Set([...prev.currentTurn.answeredPlayerIds, payload.playerId])],
+          },
+        };
+      });
+    }
+    function onSurpriseVotingStarted(payload) {
+      setRoom((prev) => {
+        if (!prev.currentTurn || prev.currentTurn.turnNumber !== payload.turnNumber) return prev;
+        return {
+          ...prev,
+          currentTurn: {
+            ...prev.currentTurn,
+            phase: 'voting',
+            answers: payload.answers,
+            votes: {},
+            voteDeadline: payload.voteDeadline,
+          },
+        };
+      });
+    }
+    function onSurpriseVoted(payload) {
+      setRoom((prev) => {
+        if (!prev.currentTurn || prev.currentTurn.turnNumber !== payload.turnNumber) return prev;
+        return {
+          ...prev,
+          currentTurn: { ...prev.currentTurn, votes: { ...prev.currentTurn.votes, [payload.voterId]: true } },
         };
       });
     }
@@ -185,12 +378,21 @@ export function RoomProvider({ children }) {
     socket.on('room:settings', onSettings);
     socket.on('room:niveau', onNiveau);
     socket.on('room:langue', onLangue);
+    socket.on('room:regles', onRegles);
     socket.on('game:started', onGameStarted);
     socket.on('game:restarted', onGameRestarted);
     socket.on('turn:started', onTurnStarted);
     socket.on('turn:answered', onTurnAnswered);
     socket.on('turn:voted', onTurnVoted);
     socket.on('turn:resolved', onTurnResolved);
+    socket.on('turn:passed', onTurnPassed);
+    socket.on('turn:questionChoiceOffered', onQuestionChoiceOffered);
+    socket.on('turn:niveauChoiceOffered', onNiveauChoiceOffered);
+    socket.on('turn:questionReturned', onQuestionReturned);
+    socket.on('turn:jugementStarted', onJugementStarted);
+    socket.on('turn:surpriseAnswered', onSurpriseAnswered);
+    socket.on('turn:surpriseVotingStarted', onSurpriseVotingStarted);
+    socket.on('turn:surpriseVoted', onSurpriseVoted);
     socket.on('game:ended', onGameEnded);
     socket.on('chat:new', onChatNew);
 
@@ -200,12 +402,21 @@ export function RoomProvider({ children }) {
       socket.off('room:settings', onSettings);
       socket.off('room:niveau', onNiveau);
       socket.off('room:langue', onLangue);
+      socket.off('room:regles', onRegles);
       socket.off('game:started', onGameStarted);
       socket.off('game:restarted', onGameRestarted);
       socket.off('turn:started', onTurnStarted);
       socket.off('turn:answered', onTurnAnswered);
       socket.off('turn:voted', onTurnVoted);
       socket.off('turn:resolved', onTurnResolved);
+      socket.off('turn:passed', onTurnPassed);
+      socket.off('turn:questionChoiceOffered', onQuestionChoiceOffered);
+      socket.off('turn:niveauChoiceOffered', onNiveauChoiceOffered);
+      socket.off('turn:questionReturned', onQuestionReturned);
+      socket.off('turn:jugementStarted', onJugementStarted);
+      socket.off('turn:surpriseAnswered', onSurpriseAnswered);
+      socket.off('turn:surpriseVotingStarted', onSurpriseVotingStarted);
+      socket.off('turn:surpriseVoted', onSurpriseVoted);
       socket.off('game:ended', onGameEnded);
       socket.off('chat:new', onChatNew);
     };
@@ -249,6 +460,12 @@ export function RoomProvider({ children }) {
     return res;
   }, []);
 
+  const updateRoomRegles = useCallback(async (regles) => {
+    const res = await emitWithAck('room:regles', regles);
+    setRoom((prev) => ({ ...prev, regles: res.regles }));
+    return res;
+  }, []);
+
   const startGame = useCallback(() => emitWithAck('game:start', {}), []);
 
   const restartGame = useCallback(() => emitWithAck('game:rematch', {}), []);
@@ -266,6 +483,24 @@ export function RoomProvider({ children }) {
   // jamais de valeur en cache, on rappelle à chaque ouverture du panneau.
   const fetchRecap = useCallback(() => emitWithAck('recap:fetch', {}), []);
 
+  // ---------- Règle A : le refus qui coûte ----------
+  const sendPass = useCallback(() => emitWithAck('turn:pass', {}), []);
+  const chooseQuestion = useCallback((questionId) => emitWithAck('turn:questionChoice', { questionId }), []);
+
+  // ---------- Règle B : le double ou rien ----------
+  const respondNiveauChoice = useCallback((accept) => emitWithAck('turn:niveauChoice', { accept }), []);
+
+  // ---------- Règle C : la question retournée ----------
+  const returnQuestionAction = useCallback(() => emitWithAck('turn:returnQuestion', {}), []);
+
+  // ---------- Règle E : le pari mutuel ----------
+  const sendBet = useCallback((text) => emitWithAck('turn:bet', { text }), []);
+  const judgeBet = useCallback((verdict) => emitWithAck('turn:judgeBet', { verdict }), []);
+
+  // ---------- Règle D : le tour surprise ----------
+  const sendSurpriseAnswer = useCallback((text) => emitWithAck('turn:surpriseAnswer', { text }), []);
+  const sendSurpriseVote = useCallback((targetId) => emitWithAck('turn:surpriseVote', { targetId }), []);
+
   return (
     <RoomContext.Provider
       value={{
@@ -276,12 +511,21 @@ export function RoomProvider({ children }) {
         updateRoomSettings,
         updateNiveauMax,
         updateRoomLangue,
+        updateRoomRegles,
         startGame,
         restartGame,
         sendAnswer,
         sendVote,
         sendChat,
         fetchRecap,
+        sendPass,
+        chooseQuestion,
+        respondNiveauChoice,
+        returnQuestionAction,
+        sendBet,
+        judgeBet,
+        sendSurpriseAnswer,
+        sendSurpriseVote,
       }}
     >
       {children}

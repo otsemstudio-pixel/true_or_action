@@ -1,10 +1,11 @@
 export { GameError } from './errors.js';
-export { POINTS, VOTE_BONUS, TIMERS, PLAYERS, CHAT } from './constants.js';
+export { POINTS, VOTE_BONUS, TIMERS, PLAYERS, CHAT, REGLES, REGLES_TIMERS } from './constants.js';
 export {
   createRoom,
   updateSettings,
   updateNiveauMax,
   updateLangue,
+  updateRegles,
   addPlayer,
   removePlayer,
   restartRoom,
@@ -14,6 +15,8 @@ export {
   getPlayer,
   getActivePlayer,
   canStart,
+  effectiveRegles,
+  DEFAULT_REGLES,
 } from './room.js';
 export {
   startGame,
@@ -22,5 +25,18 @@ export {
   submitVote,
   voteTimeout,
   handlePlayerLeft,
+  submitPass,
+  respondDoubleOuRien,
+  niveauChoiceTimeout,
+  chooseQuestion,
+  questionChoiceTimeout,
+  returnQuestion,
+  submitBet,
+  judgeBet,
+  judgeBetTimeout,
+  submitSurpriseAnswer,
+  surpriseAnswerTimeout,
+  submitSurpriseVote,
+  surpriseVoteTimeout,
 } from './turn.js';
 export { validateMessageText, isWithinRateLimit } from './chat.js';

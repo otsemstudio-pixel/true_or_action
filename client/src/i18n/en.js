@@ -65,6 +65,31 @@ export default {
     quitterLeSalon: 'Leave the room',
     pressePapiersIndisponible: 'Clipboard unavailable',
     copieImpossible: "Couldn't copy automatically, please note the code manually.",
+    reglesDuJeu: 'Game rules',
+    aucuneRegleActive: 'No special rule enabled.',
+  },
+
+  regles: {
+    refusCouteux: {
+      nom: 'The costly refusal',
+      description: 'Passing costs 2 points; the next player then picks their own question from 3 options.',
+    },
+    doubleOuRien: {
+      nom: 'Double or nothing',
+      description: 'Before seeing the question, try the level above: doubled points if you answer, nothing otherwise.',
+    },
+    questionRetournee: {
+      nom: 'The returned question',
+      description: 'Once per game, send your question back to whoever rated you best on the previous turn.',
+    },
+    tourSurprise: {
+      nom: 'The surprise round',
+      description: 'About one turn in five: everyone answers the same question, then votes for the best one.',
+    },
+    pariMutuel: {
+      nom: 'The mutual bet (2 players)',
+      description: "With 2 players, the other bets on your answer before hearing it — a correct guess earns 2 points.",
+    },
   },
 
   niveau: {
@@ -104,6 +129,46 @@ export default {
     tempsEcoule: 'Time is up, no answer.',
     recapitulatif: 'Recap',
     recapVide: 'No turn played yet.',
+
+    // Rule A: the costly refusal
+    refuser: 'Refuse to answer (-2 points)',
+    refusResultat: '{{pseudo}} refused to answer (-2 points)',
+    choisirUneQuestion: 'Choose the question you will be asked',
+    choisirCelleCi: 'Choose this one',
+    enAttenteChoixDeQuestion: '{{pseudo}} is choosing their next question…',
+
+    // Rule B: double or nothing
+    doubleOuRienTitre: 'Double or nothing?',
+    doubleOuRienTexte: 'Try the level above: doubled points if you answer, nothing if you don\'t.',
+    doubleOuRienAccepter: 'Try it (higher level)',
+    doubleOuRienRefuser: 'Stay at this level',
+    enAttenteDoubleOuRien: '{{pseudo}} is deciding whether to go double or nothing…',
+    doubleOuRienBadge: 'Double or nothing',
+
+    // Rule C: the returned question
+    retournerLaQuestion: 'Return the question',
+    questionRetourneeMessage: 'Question returned to {{pseudo}}',
+
+    // Rule D: the surprise round
+    tourSurpriseTitre: 'Surprise round!',
+    tourSurpriseTexte: 'Everyone answers the same question.',
+    tourSurpriseProgression: '{{count}} / {{total}} have answered',
+    tourSurpriseVoterTitre: 'Vote for the best answer',
+    tourSurpriseDejaVote: 'Vote sent, waiting for the others…',
+    tourSurpriseGagnant: {
+      one: '{{pseudo}} wins the surprise round ({{points}} point)',
+      other: '{{pseudo}} wins the surprise round ({{points}} points)',
+    },
+
+    // Rule E: the mutual bet
+    pariEcrisTonPari: 'What will {{pseudo}} answer?',
+    pariEnvoyer: 'Place bet',
+    pariEnvoye: 'Bet placed, waiting for the answer…',
+    pariJugerTitre: "{{pseudo}}'s bet",
+    pariVuJuste: 'Spot on (+2)',
+    pariACote: 'Off the mark',
+    pariResultatJuste: '{{pseudo}} was spot on (+2 points)',
+    pariResultatACote: '{{pseudo}} was off the mark',
   },
 
   chat: {
@@ -182,6 +247,13 @@ export default {
     NOT_HOST: 'Only the host can do this.',
     NOT_IN_ROOM: "You aren't in any room.",
     REPLY_TARGET_NOT_FOUND: 'Quoted message not found.',
+    REGLE_DISABLED: 'This rule is not enabled in this room.',
+    INVALID_REGLE: 'Invalid rule.',
+    QUESTION_RETOURNEE_INDISPONIBLE: 'Cannot return the question on this turn.',
+    PARI_MUTUEL_INDISPONIBLE: 'The mutual bet is unavailable here.',
+    SURPRISE_VOTE_INVALID: 'This player cannot receive a vote.',
+    ALREADY_ANSWERED: 'You have already answered.',
+    INVALID_CHOICE: "This choice isn't one of the options.",
     INTERNAL_ERROR: 'Internal error, please try again.',
     AUTH_REQUIRED: 'Authentication required.',
     INVALID_TOKEN: 'Session expired, please log in again.',

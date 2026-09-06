@@ -46,26 +46,60 @@ function RecapPanel({ open, onClose }) {
           {!state.loading && !state.error && state.turns?.length === 0 && (
             <p className="menu-item-hint">{t('partie.recapVide')}</p>
           )}
-          {state.turns?.map((turn) => (
-            <div key={turn.turnNumber} className="answer-card recap-item">
-              <div className="answer-card-header">
-                <span className="answer-card-author">{turn.pseudo}</span>
-                {turn.type && (
-                  <span className={`badge-type badge-type--${turn.type}`}>
-                    {turn.type === 'verite' ? t('partie.verite') : t('partie.action')}
+          {state.turns?.map((turn) =>
+            turn.mode === 'surprise' ? (
+              <div key={turn.turnNumber} className="answer-card recap-item">
+                <div className="answer-card-header">
+                  <span className="answer-card-author">{t('partie.tourSurpriseTitre')}</span>
+                  {turn.type && (
+                    <span className={`badge-type badge-type--${turn.type}`}>
+                      {turn.type === 'verite' ? t('partie.verite') : t('partie.action')}
+                    </span>
+                  )}
+                </div>
+                {turn.contenu && <p className="answer-card-question">{turn.contenu}</p>}
+                <div className="recap-surprise-results">
+                  {turn.results.map((r) => (
+                    <div key={r.playerId} className="recap-surprise-row">
+                      <span className="answer-card-author">{r.pseudo}</span>
+                      <p className="answer-card-response">
+                        {r.answer != null ? t('partie.reponseGuillemet', { reponse: r.answer }) : t('partie.tempsEcoule')}
+                      </p>
+                      <div className="answer-card-footer">
+                        <span className="answer-card-points">{t('commun.pointsGagnes', { points: r.points ?? 0 })}</span>
+                        {r.votesRecus > 0 && <span className="answer-card-thumbs">{r.votesRecus} 👍</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div key={turn.turnNumber} className="answer-card recap-item">
+                <div className="answer-card-header">
+                  <span className="answer-card-author">{turn.pseudo}</span>
+                  {turn.type && (
+                    <span className={`badge-type badge-type--${turn.type}`}>
+                      {turn.type === 'verite' ? t('partie.verite') : t('partie.action')}
+                    </span>
+                  )}
+                </div>
+                {turn.contenu && <p className="answer-card-question">{turn.contenu}</p>}
+                <p className="answer-card-response">
+                  {turn.refused
+                    ? t('partie.refusResultat', { pseudo: turn.pseudo })
+                    : turn.answer != null
+                      ? t('partie.reponseGuillemet', { reponse: turn.answer })
+                      : t('partie.tempsEcoule')}
+                </p>
+                <div className="answer-card-footer">
+                  <span className="answer-card-points">
+                    {turn.points >= 0 ? t('commun.pointsGagnes', { points: turn.points ?? 0 }) : String(turn.points)}
                   </span>
-                )}
+                  {turn.votes?.up > 0 && <span className="answer-card-thumbs">{turn.votes.up} 👍</span>}
+                </div>
               </div>
-              {turn.contenu && <p className="answer-card-question">{turn.contenu}</p>}
-              <p className="answer-card-response">
-                {turn.answer != null ? t('partie.reponseGuillemet', { reponse: turn.answer }) : t('partie.tempsEcoule')}
-              </p>
-              <div className="answer-card-footer">
-                <span className="answer-card-points">{t('commun.pointsGagnes', { points: turn.points ?? 0 })}</span>
-                {turn.votes?.up > 0 && <span className="answer-card-thumbs">{turn.votes.up} 👍</span>}
-              </div>
-            </div>
-          ))}
+            ),
+          )}
         </div>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { useI18n } from '../hooks/useI18n.jsx';
 import Button from './Button.jsx';
+import { REGLE_KEYS } from './ReglesActives.jsx';
 
 const POINTS_VERITE = 1;
 const POINTS_ACTION = 2;
@@ -15,10 +16,21 @@ const SECTIONS = [
   { icon: '👍', titre: 'voteTitre', texte: 'voteTexte' },
 ];
 
-function Tutoriel({ open, onClose }) {
+// Le didacticiel explique en plus chaque règle optionnelle actuellement
+// activée dans le salon — pas les cinq à chaque fois, pour ne pas noyer un
+// joueur qui joue sans elles. `regles` est absent hors d'un salon (menu
+// principal) : dans ce cas aucune section de règle n'est ajoutée.
+function reglesActivees(regles) {
+  if (!regles) return [];
+  return REGLE_KEYS.filter((key) => regles[key]);
+}
+
+function Tutoriel({ open, onClose, regles }) {
   const { t } = useI18n();
 
   if (!open) return null;
+
+  const activeRegles = reglesActivees(regles);
 
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={t('didacticiel.titre')}>
@@ -47,6 +59,23 @@ function Tutoriel({ open, onClose }) {
               </div>
             </div>
           ))}
+
+          {activeRegles.length > 0 && (
+            <>
+              <h3 className="tutoriel-regles-titre">{t('salon.reglesDuJeu')}</h3>
+              {activeRegles.map((key) => (
+                <div className="tutoriel-section" key={key}>
+                  <span className="tutoriel-icon" aria-hidden="true">
+                    🎲
+                  </span>
+                  <div>
+                    <h3>{t(`regles.${key}.nom`)}</h3>
+                    <p>{t(`regles.${key}.description`)}</p>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
         </div>
 
         <Button block onClick={onClose}>

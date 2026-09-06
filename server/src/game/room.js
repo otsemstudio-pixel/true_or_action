@@ -35,6 +35,43 @@ function validateLangue(langue) {
   return langue;
 }
 
+// Règles optionnelles (point 3) : cinq interrupteurs indépendants, tous
+// désactivés par défaut. `validateRegles` fait une fusion partielle sur les
+// valeurs déjà en place plutôt que d'exiger les cinq clés à chaque appel.
+export const DEFAULT_REGLES = {
+  refusCouteux: false,
+  doubleOuRien: false,
+  questionRetournee: false,
+  tourSurprise: false,
+  pariMutuel: false,
+};
+
+function validateRegles(regles, current = DEFAULT_REGLES) {
+  const merged = { ...current, ...regles };
+  for (const key of Object.keys(merged)) {
+    if (!(key in DEFAULT_REGLES)) {
+      throw new GameError('INVALID_REGLE', `Règle inconnue : ${key}`);
+    }
+    if (typeof merged[key] !== 'boolean') {
+      throw new GameError('INVALID_REGLE', `La règle ${key} doit être un booléen`);
+    }
+  }
+  return merged;
+}
+
+// Le pari mutuel n'a de sens qu'à exactement 2 joueurs (il remplace le vote,
+// déjà absent à ce nombre précis) : si l'hôte l'a activé puis qu'un 3e joueur
+// a rejoint, on le traite comme inactif sans avoir besoin de le désactiver
+// explicitement en base ni de prévenir l'hôte — il redevient actif de
+// lui-même si le salon repasse à 2 joueurs.
+export function effectiveRegles(room) {
+  // En partie, "2 joueurs" veut dire 2 joueurs actifs dans la rotation
+  // (turnOrder) : un joueur qui a quitté reste dans `players` (status
+  // "left") mais ne doit plus compter pour cette règle.
+  const activeCount = room.status === 'playing' ? room.turnOrder.length : room.players.length;
+  return { ...room.regles, pariMutuel: room.regles.pariMutuel && activeCount === 2 };
+}
+
 export function createRoom({
   code,
   hostId,
@@ -43,6 +80,7 @@ export function createRoom({
   targetScore = null,
   niveauMax = 1,
   langue = 'fr',
+  regles = {},
 }) {
   const settings = validateSettings(maxTurns, targetScore);
 
@@ -60,6 +98,12 @@ export function createRoom({
     questionPool: EMPTY_QUESTION_POOL,
     currentTurn: null,
     history: [],
+    regles: validateRegles(regles),
+    // Une fois par partie et par joueur (règle C) : ids déjà consommés.
+    reglesUsage: { questionRetournee: [] },
+    // Posé par un refus (règle A) : le tour suivant démarre en choix parmi 3
+    // questions plutôt que par un tirage direct.
+    forceQuestionChoice: false,
   };
 }
 
@@ -83,6 +127,13 @@ export function updateLangue(room, langue) {
     throw new GameError('ROOM_NOT_JOINABLE', 'Impossible de modifier la langue après le lancement');
   }
   return { ...room, langue: validateLangue(langue) };
+}
+
+export function updateRegles(room, regles) {
+  if (room.status !== 'waiting') {
+    throw new GameError('ROOM_NOT_JOINABLE', 'Impossible de modifier les règles après le lancement');
+  }
+  return { ...room, regles: validateRegles(regles, room.regles) };
 }
 
 export function addPlayer(room, { id, pseudo }) {
@@ -130,6 +181,10 @@ export function restartRoom(room) {
     questionPool: EMPTY_QUESTION_POOL,
     currentTurn: null,
     history: [],
+    // Les réglages de règles (activées/désactivées) survivent au rejeu, mais
+    // leur usage (une fois par partie et par joueur, etc.) repart à zéro.
+    reglesUsage: { questionRetournee: [] },
+    forceQuestionChoice: false,
   };
 }
 

@@ -7,6 +7,7 @@ import Button from '../components/Button.jsx';
 import TextField from '../components/TextField.jsx';
 import ErrorBanner from '../components/ErrorBanner.jsx';
 import Tutoriel from '../components/Tutoriel.jsx';
+import ReglesActives, { REGLE_KEYS } from '../components/ReglesActives.jsx';
 import { NIVEAUX } from '../lib/niveau.js';
 import { markTutorielSeen } from '../lib/tutoriel.js';
 
@@ -21,11 +22,13 @@ function copyToClipboard(text) {
 
 function SalonAttenteScreen() {
   const { user } = useAuth();
-  const { room, leaveRoom, updateRoomSettings, updateNiveauMax, updateRoomLangue, startGame } = useRoom();
+  const { room, leaveRoom, updateRoomSettings, updateNiveauMax, updateRoomLangue, updateRoomRegles, startGame } =
+    useRoom();
   const { t } = useI18n();
   const isHost = String(user.id) === room.hostId;
   const [niveauBusy, setNiveauBusy] = useState(false);
   const [langueBusy, setLangueBusy] = useState(false);
+  const [reglesBusy, setReglesBusy] = useState(false);
 
   // Champs d'édition locaux à l'hôte : initialisés une fois depuis les réglages du
   // salon, puis pilotés uniquement par la saisie locale. Les réglages de room ne
@@ -82,6 +85,18 @@ function SalonAttenteScreen() {
       setError(translateError(t, err));
     } finally {
       setLangueBusy(false);
+    }
+  };
+
+  const handleToggleRegle = async (key) => {
+    setError(null);
+    setReglesBusy(true);
+    try {
+      await updateRoomRegles({ [key]: !room.regles[key] });
+    } catch (err) {
+      setError(translateError(t, err));
+    } finally {
+      setReglesBusy(false);
     }
   };
 
@@ -245,6 +260,35 @@ function SalonAttenteScreen() {
         )}
       </div>
 
+      <div className="card">
+        <h2>{t('salon.reglesDuJeu')}</h2>
+        {isHost ? (
+          <div className="regle-list">
+            {REGLE_KEYS.filter((key) => key !== 'pariMutuel' || room.players.length === 2).map((key) => (
+              <div key={key} className="regle-row">
+                <div className="regle-info">
+                  <span className="regle-nom">{t(`regles.${key}.nom`)}</span>
+                  <span className="regle-description">{t(`regles.${key}.description`)}</span>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={room.regles[key]}
+                  aria-label={t(`regles.${key}.nom`)}
+                  disabled={reglesBusy}
+                  className={`regle-switch${room.regles[key] ? ' regle-switch--active' : ''}`}
+                  onClick={() => handleToggleRegle(key)}
+                >
+                  <span className="regle-switch-knob" />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <ReglesActives regles={room.regles} />
+        )}
+      </div>
+
       {isHost ? (
         <Button variant="dark" block arrow busy={busy} disabled={!canStart} onClick={handleStart}>
           {t('salon.lancerLaPartie')}
@@ -259,6 +303,7 @@ function SalonAttenteScreen() {
 
       <Tutoriel
         open={tutorielOpen}
+        regles={room.regles}
         onClose={() => {
           markTutorielSeen();
           setTutorielOpen(false);

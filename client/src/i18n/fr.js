@@ -65,6 +65,33 @@ export default {
     quitterLeSalon: 'Quitter le salon',
     pressePapiersIndisponible: 'Presse-papiers indisponible',
     copieImpossible: 'Impossible de copier automatiquement, notez le code manuellement.',
+    reglesDuJeu: 'Règles du jeu',
+    aucuneRegleActive: 'Aucune règle spéciale activée.',
+  },
+
+  regles: {
+    refusCouteux: {
+      nom: 'Le refus qui coûte',
+      description: 'Passer son tour coûte 2 points ; le joueur suivant choisit alors sa question parmi 3.',
+    },
+    doubleOuRien: {
+      nom: 'Le double ou rien',
+      description:
+        'Avant de voir la question, tenter le niveau du dessus : points doublés en cas de réponse, rien sinon.',
+    },
+    questionRetournee: {
+      nom: 'La question retournée',
+      description:
+        'Une fois par partie, renvoyez votre question au joueur qui vous a le mieux noté au tour précédent.',
+    },
+    tourSurprise: {
+      nom: 'Le tour surprise',
+      description: 'Environ un tour sur cinq : tout le monde répond à la même question, puis vote pour la meilleure.',
+    },
+    pariMutuel: {
+      nom: 'Le pari mutuel (2 joueurs)',
+      description: "À deux, l'autre parie sur votre réponse avant de l'entendre — vu juste rapporte 2 points.",
+    },
   },
 
   niveau: {
@@ -104,6 +131,46 @@ export default {
     tempsEcoule: 'Temps écoulé, aucune réponse.',
     recapitulatif: 'Récapitulatif',
     recapVide: 'Aucun tour joué pour le moment.',
+
+    // Règle A : le refus qui coûte
+    refuser: 'Refuser de répondre (-2 points)',
+    refusResultat: '{{pseudo}} a refusé de répondre (-2 points)',
+    choisirUneQuestion: 'Choisis la question qui te sera posée',
+    choisirCelleCi: 'Choisir celle-ci',
+    enAttenteChoixDeQuestion: '{{pseudo}} choisit sa prochaine question…',
+
+    // Règle B : le double ou rien
+    doubleOuRienTitre: 'Double ou rien ?',
+    doubleOuRienTexte: 'Tenter le niveau du dessus : points doublés si tu réponds, rien si tu ne réponds pas.',
+    doubleOuRienAccepter: 'Tenter (niveau supérieur)',
+    doubleOuRienRefuser: 'Rester à ce niveau',
+    enAttenteDoubleOuRien: '{{pseudo}} décide de tenter le double ou rien…',
+    doubleOuRienBadge: 'Double ou rien',
+
+    // Règle C : la question retournée
+    retournerLaQuestion: 'Retourner la question',
+    questionRetourneeMessage: 'Question retournée à {{pseudo}}',
+
+    // Règle D : le tour surprise
+    tourSurpriseTitre: 'Tour surprise !',
+    tourSurpriseTexte: 'Tout le monde répond à la même question.',
+    tourSurpriseProgression: '{{count}} / {{total}} ont répondu',
+    tourSurpriseVoterTitre: 'Vote pour la meilleure réponse',
+    tourSurpriseDejaVote: 'Vote envoyé, en attente des autres…',
+    tourSurpriseGagnant: {
+      one: '{{pseudo}} gagne le tour surprise ({{points}} point)',
+      other: '{{pseudo}} gagne le tour surprise ({{points}} points)',
+    },
+
+    // Règle E : le pari mutuel
+    pariEcrisTonPari: 'Que va répondre {{pseudo}} ?',
+    pariEnvoyer: 'Parier',
+    pariEnvoye: 'Pari envoyé, en attente de la réponse…',
+    pariJugerTitre: 'Le pari de {{pseudo}}',
+    pariVuJuste: 'Vu juste (+2)',
+    pariACote: 'À côté',
+    pariResultatJuste: '{{pseudo}} avait vu juste (+2 points)',
+    pariResultatACote: '{{pseudo}} était à côté',
   },
 
   chat: {
@@ -184,6 +251,13 @@ export default {
     NOT_HOST: "Seul l'hôte peut faire cette action.",
     NOT_IN_ROOM: "Vous n'êtes dans aucun salon.",
     REPLY_TARGET_NOT_FOUND: 'Message cité introuvable.',
+    REGLE_DISABLED: "Cette règle n'est pas activée dans ce salon.",
+    INVALID_REGLE: 'Règle invalide.',
+    QUESTION_RETOURNEE_INDISPONIBLE: "Impossible de retourner la question sur ce tour.",
+    PARI_MUTUEL_INDISPONIBLE: 'Le pari mutuel est indisponible ici.',
+    SURPRISE_VOTE_INVALID: 'Ce joueur ne peut pas recevoir de vote.',
+    ALREADY_ANSWERED: 'Vous avez déjà répondu.',
+    INVALID_CHOICE: 'Ce choix ne fait pas partie des propositions.',
     INTERNAL_ERROR: 'Erreur interne, réessayez.',
     AUTH_REQUIRED: 'Authentification requise.',
     INVALID_TOKEN: 'Session expirée, reconnectez-vous.',
