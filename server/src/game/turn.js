@@ -223,7 +223,14 @@ function resolveTurn(room, rng) {
   };
 
   const effects = [
-    { type: 'TURN_RESOLVED', turnNumber: turn.turnNumber, playerId: turn.activePlayerId, points, votes: turn.votes },
+    {
+      type: 'TURN_RESOLVED',
+      turnNumber: turn.turnNumber,
+      playerId: turn.activePlayerId,
+      points,
+      votes: turn.votes,
+      timedOut: turn.answer === null,
+    },
   ];
 
   const endReason = checkGameEnd(room2);

@@ -19,11 +19,14 @@ import {
   validateMessageText,
   isWithinRateLimit,
 } from '../game/index.js';
-import { generateRoomCode, createRoomEntry, getEntry, setEntry, deleteEntry } from './store.js';
+import { generateRoomCode, createRoomEntry, getEntry, setEntry, deleteEntry, runExclusive } from './store.js';
 import { setTimer, clearTimer, clearAllTimers, setGraceTimer, clearGraceTimer } from './timers.js';
-import { fetchQuestionBank } from './questions.js';
 import { buildSnapshot } from './snapshot.js';
 import { verifyToken } from '../auth/token.js';
+import { pool, withTransaction } from '../db/pool.js';
+import * as repo from '../db/repository.js';
+import { persistEffects } from './persistence.js';
+import { loadRoomEntryFromDb } from './reconstruct.js';
 
 function errorResponse(err, extra = {}) {
   if (err instanceof GameError) {
@@ -49,7 +52,19 @@ function broadcastPlayers(io, entry) {
   });
 }
 
-function applyGameEffects(io, entry, effects) {
+function enrichEffects(effects) {
+  return effects.map((effect) => {
+    if (effect.type === 'TURN_STARTED') {
+      return { ...effect, answerDeadline: Date.now() + TIMERS.answerMs };
+    }
+    if (effect.type === 'ANSWER_SUBMITTED') {
+      return { ...effect, voteDeadline: Date.now() + TIMERS.voteMs };
+    }
+    return effect;
+  });
+}
+
+function broadcastEffects(io, entry, effects) {
   for (const effect of effects) {
     switch (effect.type) {
       case 'TURN_STARTED':
@@ -59,7 +74,7 @@ function applyGameEffects(io, entry, effects) {
           type: effect.questionType,
           questionId: effect.questionId,
           contenu: entry.questionsById.get(effect.questionId) ?? null,
-          answerDeadline: Date.now() + TIMERS.answerMs,
+          answerDeadline: effect.answerDeadline,
         });
         break;
       case 'ANSWER_SUBMITTED':
@@ -67,7 +82,7 @@ function applyGameEffects(io, entry, effects) {
           turnNumber: effect.turnNumber,
           playerId: effect.playerId,
           answer: effect.answer,
-          voteDeadline: Date.now() + TIMERS.voteMs,
+          voteDeadline: effect.voteDeadline,
         });
         break;
       case 'VOTE_SUBMITTED':
@@ -94,7 +109,7 @@ function applyGameEffects(io, entry, effects) {
         break;
       case 'START_TIMER':
         setTimer(entry, effect.name, effect.turnNumber, effect.durationMs, () =>
-          handleTimerFire(io, entry, effect.name, effect.turnNumber)
+          runExclusive(entry, () => handleTimerFire(io, entry, effect.name, effect.turnNumber))
         );
         break;
       case 'CLEAR_TIMER':
@@ -106,12 +121,22 @@ function applyGameEffects(io, entry, effects) {
   }
 }
 
-function handleTimerFire(io, entry, name, turnNumber) {
+// Persiste puis diffuse un lot d'effets issus de src/game/turn.js. La mémoire
+// (entry.room) n'est mise à jour qu'une fois l'écriture en base confirmée :
+// en cas d'échec, le cache reste sur son ancien état cohérent avec la base.
+export async function applyGameEffects(io, entry, newRoom, effects) {
+  const enriched = enrichEffects(effects);
+  const { newTurnDbId } = await withTransaction((client) => persistEffects(client, entry, newRoom, enriched));
+  entry.room = newRoom;
+  if (newTurnDbId) entry.currentTurnDbId = newTurnDbId;
+  broadcastEffects(io, entry, enriched);
+}
+
+export async function handleTimerFire(io, entry, name, turnNumber) {
   try {
     const fn = name === 'answer' ? answerTimeout : voteTimeout;
     const { room, effects } = fn(entry.room, { turnNumber });
-    entry.room = room;
-    applyGameEffects(io, entry, effects);
+    await applyGameEffects(io, entry, room, effects);
   } catch (err) {
     if (!(err instanceof GameError)) {
       console.error('Erreur timer inattendue:', err.code || err.name || 'erreur inconnue');
@@ -127,6 +152,29 @@ function cleanupIfEmpty(entry, code) {
     }
     deleteEntry(code);
   }
+}
+
+// Fin de la fenêtre de grâce d'un joueur déconnecté (2 min) : retiré du salon
+// s'il attendait encore (waiting), sinon marqué "left" et sorti de l'ordre des
+// tours. Réutilisé tel quel au redémarrage pour les délais déjà expirés.
+export async function expireGrace(io, entry, code, playerId) {
+  entry.graceTimers.delete(playerId);
+  const wasWaiting = entry.room.status === 'waiting';
+  const updatedRoom = wasWaiting ? removePlayer(entry.room, playerId) : excludePlayer(entry.room, playerId);
+
+  await withTransaction(async (client) => {
+    if (wasWaiting) {
+      await repo.deleteRoomPlayer(client, entry.dbRoomId, Number(playerId));
+    } else {
+      await repo.updatePlayerState(client, entry.dbRoomId, Number(playerId), 'left');
+    }
+  });
+
+  entry.room = updatedRoom;
+  if (entry.room.players.length > 0) {
+    broadcastPlayers(io, entry);
+  }
+  cleanupIfEmpty(entry, code);
 }
 
 export function registerSocketHandlers(io) {
@@ -146,10 +194,39 @@ export function registerSocketHandlers(io) {
   });
 
   io.on('connection', (socket) => {
-    socket.on('room:create', (payload, ack) => {
+    socket.on('room:create', async (payload, ack) => {
       try {
         const { maxTurns = null, targetScore = null } = payload ?? {};
-        const code = generateRoomCode();
+        const hostIdNum = Number(socket.data.playerId);
+
+        // Valide les réglages avant de toucher la base (résultat jeté, on ne
+        // veut que l'erreur éventuelle).
+        createRoom({ code: '000000', hostId: socket.data.playerId, hostPseudo: socket.data.pseudo, maxTurns, targetScore });
+
+        let code;
+        let dbRoomId;
+        for (let attempt = 0; attempt < 5; attempt++) {
+          code = generateRoomCode();
+          try {
+            dbRoomId = await withTransaction(async (client) => {
+              const id = await repo.insertRoom(client, {
+                code,
+                hostId: hostIdNum,
+                maxTurns,
+                targetScore,
+                timeoutSec: TIMERS.answerMs / 1000,
+                voteSec: TIMERS.voteMs / 1000,
+              });
+              await repo.insertRoomPlayer(client, id, hostIdNum);
+              return id;
+            });
+            break;
+          } catch (err) {
+            if (err.code === '23505' && attempt < 4) continue;
+            throw err;
+          }
+        }
+
         const room = createRoom({
           code,
           hostId: socket.data.playerId,
@@ -158,6 +235,7 @@ export function registerSocketHandlers(io) {
           targetScore,
         });
         const entry = createRoomEntry(room);
+        entry.dbRoomId = dbRoomId;
         entry.sockets.set(socket.data.playerId, socket.id);
         setEntry(code, entry);
 
@@ -170,15 +248,19 @@ export function registerSocketHandlers(io) {
       }
     });
 
-    socket.on('room:join', (payload, ack) => {
+    socket.on('room:join', async (payload, ack) => {
       try {
         const { code } = payload ?? {};
         const entry = getEntry(String(code ?? '').toUpperCase());
         if (!entry) throw new GameError('ROOM_NOT_FOUND', 'Salon introuvable');
 
-        entry.room = addPlayer(entry.room, { id: socket.data.playerId, pseudo: socket.data.pseudo });
-        entry.sockets.set(socket.data.playerId, socket.id);
+        await runExclusive(entry, async () => {
+          const updatedRoom = addPlayer(entry.room, { id: socket.data.playerId, pseudo: socket.data.pseudo });
+          await repo.insertRoomPlayer(pool, entry.dbRoomId, Number(socket.data.playerId));
+          entry.room = updatedRoom;
+        });
 
+        entry.sockets.set(socket.data.playerId, socket.id);
         socket.join(entry.room.code);
         socket.data.roomCode = entry.room.code;
 
@@ -189,35 +271,65 @@ export function registerSocketHandlers(io) {
       }
     });
 
-    socket.on('room:rejoin', (payload, ack) => {
+    socket.on('room:rejoin', async (payload, ack) => {
       try {
-        const { code } = payload ?? {};
-        const entry = getEntry(String(code ?? '').toUpperCase());
-        if (!entry) throw new GameError('ROOM_NOT_FOUND', 'Salon introuvable');
+        const code = String(payload?.code ?? '').toUpperCase();
+        const existingEntry = getEntry(code);
+        if (!existingEntry) throw new GameError('ROOM_NOT_FOUND', 'Salon introuvable');
 
-        const player = getPlayer(entry.room, socket.data.playerId);
+        const player = getPlayer(existingEntry.room, socket.data.playerId);
         if (!player) throw new GameError('PLAYER_NOT_FOUND', 'Vous ne faites pas partie de ce salon');
 
-        clearGraceTimer(entry, socket.data.playerId);
-        entry.room = markReconnected(entry.room, socket.data.playerId);
-        entry.sockets.set(socket.data.playerId, socket.id);
+        const freshEntry = await runExclusive(existingEntry, async () => {
+          await repo.updatePlayerState(pool, existingEntry.dbRoomId, Number(socket.data.playerId), 'active');
 
-        socket.join(entry.room.code);
-        socket.data.roomCode = entry.room.code;
+          // Le snapshot de reconnexion se construit toujours depuis la base,
+          // jamais depuis le cache mémoire — celui-ci se resynchronise dessus.
+          const roomRow = await repo.fetchRoomByCode(pool, code);
+          if (!roomRow) throw new GameError('ROOM_NOT_FOUND', 'Salon introuvable');
+          const { entry: reloaded } = await loadRoomEntryFromDb(roomRow);
 
-        broadcastPlayers(io, entry);
-        ack?.({ ok: true, snapshot: buildSnapshot(entry) });
+          reloaded.sockets = existingEntry.sockets;
+          reloaded.timers = existingEntry.timers;
+          reloaded.graceTimers = existingEntry.graceTimers;
+          reloaded.chat.rateLimits = existingEntry.chat.rateLimits;
+          setEntry(code, reloaded);
+          return reloaded;
+        });
+        freshEntry.lock = Promise.resolve(); // l'opération ci-dessus est terminée, la file repart à vide
+
+        clearGraceTimer(freshEntry, socket.data.playerId);
+        freshEntry.sockets.set(socket.data.playerId, socket.id);
+
+        socket.join(code);
+        socket.data.roomCode = code;
+
+        broadcastPlayers(io, freshEntry);
+        ack?.({ ok: true, snapshot: buildSnapshot(freshEntry) });
       } catch (err) {
         ack?.(errorResponse(err));
       }
     });
 
-    socket.on('room:leave', (_, ack) => {
+    socket.on('room:leave', async (_, ack) => {
       try {
         const entry = requireEntry(socket);
         const code = entry.room.code;
 
-        entry.room = removePlayer(entry.room, socket.data.playerId);
+        await runExclusive(entry, async () => {
+          const updatedRoom = removePlayer(entry.room, socket.data.playerId);
+          const hostChanged = updatedRoom.hostId !== entry.room.hostId;
+
+          await withTransaction(async (client) => {
+            await repo.deleteRoomPlayer(client, entry.dbRoomId, Number(socket.data.playerId));
+            if (hostChanged) {
+              await repo.updateRoomHost(client, entry.dbRoomId, Number(updatedRoom.hostId));
+            }
+          });
+
+          entry.room = updatedRoom;
+        });
+
         entry.sockets.delete(socket.data.playerId);
         socket.leave(code);
         socket.data.roomCode = null;
@@ -233,14 +345,19 @@ export function registerSocketHandlers(io) {
       }
     });
 
-    socket.on('room:settings', (payload, ack) => {
+    socket.on('room:settings', async (payload, ack) => {
       try {
         const entry = requireEntry(socket);
         if (entry.room.hostId !== socket.data.playerId) {
           throw new GameError('NOT_HOST', "Seul l'hôte peut modifier les réglages");
         }
         const { maxTurns = null, targetScore = null } = payload ?? {};
-        entry.room = updateSettings(entry.room, { maxTurns, targetScore });
+        await runExclusive(entry, async () => {
+          const updatedRoom = updateSettings(entry.room, { maxTurns, targetScore });
+          await repo.updateRoomSettings(pool, entry.dbRoomId, { maxTurns, targetScore });
+          entry.room = updatedRoom;
+        });
+
         io.to(entry.room.code).emit('room:settings', { settings: entry.room.settings });
         ack?.({ ok: true, settings: entry.room.settings });
       } catch (err) {
@@ -248,14 +365,27 @@ export function registerSocketHandlers(io) {
       }
     });
 
-    socket.on('game:rematch', (_, ack) => {
+    socket.on('game:rematch', async (_, ack) => {
       try {
         const entry = requireEntry(socket);
         if (entry.room.hostId !== socket.data.playerId) {
           throw new GameError('NOT_HOST', "Seul l'hôte peut relancer une partie");
         }
-        entry.room = restartRoom(entry.room);
+        await runExclusive(entry, async () => {
+          const updatedRoom = restartRoom(entry.room);
+
+          await withTransaction(async (client) => {
+            await repo.updateRoomStatus(client, entry.dbRoomId, 'waiting');
+            await repo.resetRoomPlayersScores(client, entry.dbRoomId);
+            await repo.deleteLeftPlayers(client, entry.dbRoomId);
+            await repo.deleteRoomTurnsAndVotes(client, entry.dbRoomId);
+          });
+
+          entry.room = updatedRoom;
+          entry.currentTurnDbId = null;
+        });
         clearAllTimers(entry);
+
         io.to(entry.room.code).emit('game:restarted', { snapshot: buildSnapshot(entry) });
         ack?.({ ok: true });
       } catch (err) {
@@ -270,14 +400,24 @@ export function registerSocketHandlers(io) {
           throw new GameError('NOT_HOST', "Seul l'hôte peut lancer la partie");
         }
 
-        const { questionPool, byId } = await fetchQuestionBank({ niveauMax: 1 });
-        entry.questionsById = byId;
+        const enriched = await runExclusive(entry, async () => {
+          const { questionPool, byId } = await repo.fetchQuestionBank(pool, { niveauMax: 1 });
+          const { room, effects } = startGame(entry.room, { questionPool });
+          const effectsEnriched = enrichEffects(effects);
 
-        const { room, effects } = startGame(entry.room, { questionPool });
-        entry.room = room;
+          const { newTurnDbId } = await withTransaction(async (client) => {
+            await repo.updateRoomStatus(client, entry.dbRoomId, 'playing');
+            return persistEffects(client, entry, room, effectsEnriched);
+          });
+
+          entry.questionsById = byId;
+          entry.room = room;
+          if (newTurnDbId) entry.currentTurnDbId = newTurnDbId;
+          return effectsEnriched;
+        });
 
         io.to(entry.room.code).emit('game:started', { snapshot: buildSnapshot(entry) });
-        applyGameEffects(io, entry, effects);
+        broadcastEffects(io, entry, enriched);
 
         ack?.({ ok: true });
       } catch (err) {
@@ -285,38 +425,40 @@ export function registerSocketHandlers(io) {
       }
     });
 
-    socket.on('turn:answer', (payload, ack) => {
+    socket.on('turn:answer', async (payload, ack) => {
       try {
         const entry = requireEntry(socket);
         const { text } = payload ?? {};
-        const { room, effects } = submitAnswer(entry.room, { playerId: socket.data.playerId, text });
-        entry.room = room;
-        applyGameEffects(io, entry, effects);
+        await runExclusive(entry, async () => {
+          const { room, effects } = submitAnswer(entry.room, { playerId: socket.data.playerId, text });
+          await applyGameEffects(io, entry, room, effects);
+        });
         ack?.({ ok: true });
       } catch (err) {
         ack?.(errorResponse(err));
       }
     });
 
-    socket.on('turn:vote', (payload, ack) => {
+    socket.on('turn:vote', async (payload, ack) => {
       try {
         const entry = requireEntry(socket);
         const { vote } = payload ?? {};
-        const turnNumber = entry.room.currentTurn?.turnNumber;
-        const { room, effects } = submitVote(entry.room, {
-          voterId: socket.data.playerId,
-          vote,
-          turnNumber,
+        await runExclusive(entry, async () => {
+          const turnNumber = entry.room.currentTurn?.turnNumber;
+          const { room, effects } = submitVote(entry.room, {
+            voterId: socket.data.playerId,
+            vote,
+            turnNumber,
+          });
+          await applyGameEffects(io, entry, room, effects);
         });
-        entry.room = room;
-        applyGameEffects(io, entry, effects);
         ack?.({ ok: true });
       } catch (err) {
         ack?.(errorResponse(err));
       }
     });
 
-    socket.on('chat:send', (payload, ack) => {
+    socket.on('chat:send', async (payload, ack) => {
       const clientId = payload?.clientId;
       try {
         const entry = requireEntry(socket);
@@ -327,17 +469,20 @@ export function registerSocketHandlers(io) {
         if (!isWithinRateLimit(timestamps, now)) {
           throw new GameError('RATE_LIMITED', 'Trop de messages, patientez un instant');
         }
+
+        const saved = await repo.insertMessage(pool, entry.dbRoomId, Number(socket.data.playerId), trimmed);
+
         entry.chat.rateLimits.set(
           socket.data.playerId,
           [...timestamps.filter((t) => t > now - CHAT.rateLimit.windowMs), now]
         );
 
         const message = {
-          id: entry.chat.nextMessageId++,
+          id: saved.id,
           playerId: socket.data.playerId,
           pseudo: socket.data.pseudo,
           text: trimmed,
-          createdAt: now,
+          createdAt: new Date(saved.created_at).getTime(),
         };
         entry.chat.messages.push(message);
         if (entry.chat.messages.length > 200) entry.chat.messages.shift();
@@ -358,19 +503,22 @@ export function registerSocketHandlers(io) {
       if (entry.sockets.get(socket.data.playerId) !== socket.id) return; // une session plus récente a pris le relais
 
       entry.sockets.delete(socket.data.playerId);
-      entry.room = markDisconnected(entry.room, socket.data.playerId);
-      broadcastPlayers(io, entry);
+
+      // Pas d'ack possible sur une déconnexion : la mémoire est mise à jour
+      // tout de suite (l'utilisateur doit voir l'effet immédiatement) et la
+      // persistance suit en arrière-plan, toujours sérialisée avec le reste.
+      runExclusive(entry, async () => {
+        entry.room = markDisconnected(entry.room, socket.data.playerId);
+        broadcastPlayers(io, entry);
+        await repo.updatePlayerState(pool, entry.dbRoomId, Number(socket.data.playerId), 'disconnected');
+      }).catch((err) => {
+        console.error('Erreur persistance déconnexion:', err.code || err.name || 'erreur inconnue');
+      });
 
       setGraceTimer(entry, socket.data.playerId, TIMERS.disconnectGraceMs, () => {
-        if (entry.room.status === 'waiting') {
-          entry.room = removePlayer(entry.room, socket.data.playerId);
-        } else {
-          entry.room = excludePlayer(entry.room, socket.data.playerId);
-        }
-        if (entry.room.players.length > 0) {
-          broadcastPlayers(io, entry);
-        }
-        cleanupIfEmpty(entry, code);
+        runExclusive(entry, () => expireGrace(io, entry, code, socket.data.playerId)).catch((err) => {
+          console.error('Erreur expiration grâce:', err.code || err.name || 'erreur inconnue');
+        });
       });
     });
   });

@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { Server } from 'socket.io';
 import { env } from './config/env.js';
 import { pool } from './db/pool.js';
-import { registerSocketHandlers } from './sockets/index.js';
+import { registerSocketHandlers, reloadActiveRooms } from './sockets/index.js';
 import authRouter from './routes/auth.js';
 
 const app = express();
@@ -40,6 +40,16 @@ const io = new Server(httpServer, {
 
 registerSocketHandlers(io);
 
-httpServer.listen(env.port, () => {
-  console.log(`Serveur démarré sur le port ${env.port} (${env.nodeEnv})`);
-});
+async function start() {
+  try {
+    await reloadActiveRooms(io);
+  } catch (err) {
+    console.error('Échec du rechargement des parties en cours:', err.code || err.name || 'erreur inconnue');
+  }
+
+  httpServer.listen(env.port, () => {
+    console.log(`Serveur démarré sur le port ${env.port} (${env.nodeEnv})`);
+  });
+}
+
+start();
