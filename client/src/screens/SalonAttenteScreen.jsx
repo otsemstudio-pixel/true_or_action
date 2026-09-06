@@ -6,6 +6,8 @@ import TextField from '../components/TextField.jsx';
 import ErrorBanner from '../components/ErrorBanner.jsx';
 import { NIVEAUX, NIVEAU_LABELS, NIVEAU_DESCRIPTIONS } from '../lib/niveau.js';
 
+const MIN_PLAYERS = 2;
+
 function copyToClipboard(text) {
   if (navigator.clipboard?.writeText) {
     return navigator.clipboard.writeText(text);
@@ -30,7 +32,7 @@ function SalonAttenteScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  const canStart = room.players.length >= 3;
+  const canStart = room.players.length >= MIN_PLAYERS;
 
   const applySettings = async (nextMode, value) => {
     setError(null);
@@ -109,8 +111,10 @@ function SalonAttenteScreen() {
             </li>
           ))}
         </ul>
-        {room.players.length < 3 && (
-          <p className="menu-item-hint">Encore {3 - room.players.length} joueur(s) pour pouvoir lancer.</p>
+        {room.players.length < MIN_PLAYERS && (
+          <p className="menu-item-hint">
+            Encore {MIN_PLAYERS - room.players.length} joueur(s) pour pouvoir lancer.
+          </p>
         )}
       </div>
 

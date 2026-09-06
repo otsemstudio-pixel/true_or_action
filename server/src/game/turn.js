@@ -1,6 +1,6 @@
 import { GameError } from './errors.js';
-import { POINTS, VOTE_BONUS, TIMERS } from './constants.js';
-import { canStart, getPlayer } from './room.js';
+import { POINTS, VOTE_BONUS, TIMERS, PLAYERS } from './constants.js';
+import { canStart, getPlayer, excludePlayer } from './room.js';
 
 const TOP_NIVEAU_WEIGHT = 0.6;
 
@@ -10,7 +10,7 @@ function defaultRng() {
 
 export function startGame(room, { questionPool, rng = defaultRng }) {
   if (!canStart(room)) {
-    throw new GameError('CANNOT_START', 'Il faut au moins 3 joueurs pour lancer la partie');
+    throw new GameError('CANNOT_START', `Il faut au moins ${PLAYERS.min} joueurs pour lancer la partie`);
   }
 
   const { maxTurns } = room.settings;
@@ -48,7 +48,7 @@ export function startGame(room, { questionPool, rng = defaultRng }) {
   return advanceTurn(startedRoom, rng);
 }
 
-export function submitAnswer(room, { playerId, text }) {
+export function submitAnswer(room, { playerId, text, rng = defaultRng }) {
   assertTurnPhase(room, 'answering');
 
   if (room.currentTurn.activePlayerId !== playerId) {
@@ -66,13 +66,23 @@ export function submitAnswer(room, { playerId, text }) {
     currentTurn: { ...room.currentTurn, phase: 'voting', answer: trimmed },
   };
 
+  const baseEffects = [
+    { type: 'CLEAR_TIMER', name: 'answer', turnNumber },
+    { type: 'ANSWER_SUBMITTED', turnNumber, playerId, answer: trimmed },
+  ];
+
+  // À 2 joueurs, le seul votant possible serait l'autre joueur : le vote n'a
+  // pas de sens à sélectionner entre deux options avec une seule voix. La
+  // phase de vote est sautée, les points restent la valeur de base (aucun
+  // pouce haut ne peut s'ajouter puisque personne ne vote).
+  if (room.turnOrder.length <= 2) {
+    const resolved = resolveTurn(room2, rng);
+    return { room: resolved.room, effects: [...baseEffects, ...resolved.effects] };
+  }
+
   return {
     room: room2,
-    effects: [
-      { type: 'CLEAR_TIMER', name: 'answer', turnNumber },
-      { type: 'ANSWER_SUBMITTED', turnNumber, playerId, answer: trimmed },
-      { type: 'START_TIMER', name: 'vote', turnNumber, durationMs: TIMERS.voteMs },
-    ],
+    effects: [...baseEffects, { type: 'START_TIMER', name: 'vote', turnNumber, durationMs: TIMERS.voteMs }],
   };
 }
 
@@ -287,4 +297,30 @@ function buildRanking(room) {
   return [...room.players]
     .sort((a, b) => b.score - a.score)
     .map((p) => ({ playerId: p.id, score: p.score }));
+}
+
+// Exclut un joueur (fin de grâce après déconnexion). S'il n'en reste plus
+// qu'un seul en partie, celle-ci se termine immédiatement avec le classement
+// en l'état — jouer seul n'a pas de sens. Les timers de tour en cours (s'il y
+// en avait) sont explicitement effacés, que la partie soit terminée ou non.
+export function handlePlayerLeft(room, playerId) {
+  const updatedRoom = excludePlayer(room, playerId);
+
+  if (updatedRoom.status !== 'playing') {
+    return { room: updatedRoom, effects: [] };
+  }
+
+  if (updatedRoom.turnOrder.length <= 1) {
+    const finished = { ...updatedRoom, status: 'finished', currentTurn: null };
+    return {
+      room: finished,
+      effects: [
+        { type: 'CLEAR_TIMER', name: 'answer' },
+        { type: 'CLEAR_TIMER', name: 'vote' },
+        { type: 'GAME_ENDED', reason: 'notEnoughPlayers', ranking: buildRanking(finished) },
+      ],
+    };
+  }
+
+  return { room: updatedRoom, effects: [] };
 }

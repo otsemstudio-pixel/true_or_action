@@ -86,12 +86,14 @@ describe('updateSettings', () => {
 });
 
 describe('addPlayer', () => {
-  test('ajoute des joueurs jusqu\'au minimum jouable', () => {
-    let room = baseRoom();
-    room = addPlayer(room, { id: 'p2', pseudo: 'B' });
-    room = addPlayer(room, { id: 'p3', pseudo: 'C' });
-    assert.equal(room.players.length, 3);
+  test('peut lancer dès 2 joueurs (minimum abaissé)', () => {
+    const room = addPlayer(baseRoom(), { id: 'p2', pseudo: 'B' });
+    assert.equal(room.players.length, 2);
     assert.equal(canStart(room), true);
+  });
+
+  test('ne peut pas lancer à 1 seul joueur', () => {
+    assert.equal(canStart(baseRoom()), false);
   });
 
   test('refuse un joueur déjà présent', () => {

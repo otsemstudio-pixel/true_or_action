@@ -12,7 +12,7 @@ export const TIMERS = {
 };
 
 export const PLAYERS = {
-  min: 3,
+  min: 2,
   max: 8,
 };
 

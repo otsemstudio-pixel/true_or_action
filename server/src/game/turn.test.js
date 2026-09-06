@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRoom, addPlayer } from './room.js';
-import { startGame, submitAnswer, answerTimeout, submitVote, voteTimeout } from './turn.js';
+import { startGame, submitAnswer, answerTimeout, submitVote, voteTimeout, handlePlayerLeft } from './turn.js';
 import { GameError } from './errors.js';
 
 function createSequenceRng(values) {
@@ -33,13 +33,27 @@ function threePlayerRoom(settings = {}) {
   return room;
 }
 
+function twoPlayerRoom(settings = {}) {
+  const room = createRoom({ code: 'ABCD', hostId: 'p1', hostPseudo: 'A', ...settings });
+  return addPlayer(room, { id: 'p2', pseudo: 'B' });
+}
+
 describe('startGame', () => {
-  test('refuse de démarrer sous le minimum de joueurs', () => {
+  test('refuse de démarrer sous le minimum de joueurs (1 seul)', () => {
     const room = createRoom({ code: 'ABCD', hostId: 'p1', hostPseudo: 'A', maxTurns: 3 });
     assert.throws(
       () => startGame(room, { questionPool: pool({ veriteTop: ['v1', 'v2', 'v3'], actionTop: ['a1', 'a2', 'a3'] }) }),
       (err) => err.code === 'CANNOT_START'
     );
+  });
+
+  test('démarre dès 2 joueurs (minimum abaissé)', () => {
+    const room = twoPlayerRoom({ maxTurns: 1 });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    assert.equal(start.room.status, 'playing');
   });
 
   test('refuse si les questions sont insuffisantes et indique combien il en manque', () => {
@@ -316,5 +330,115 @@ describe('non-répétition des questions', () => {
     const answered = submitAnswer(start.room, { playerId: 'p1', text: 'réponse' });
     const resolved = voteTimeout(answered.room, { turnNumber: 1, rng });
     assert.equal(resolved.room.currentTurn.questionId, 'lower-v');
+  });
+});
+
+describe('vote sauté à 2 joueurs', () => {
+  test('la réponse résout directement le tour avec les points de base, sans phase de vote', () => {
+    const room = twoPlayerRoom({ maxTurns: 2 });
+    const rng = createSequenceRng([
+      0.1, BUCKET_DONT_CARE, 0.0, // tour 1 : vérité
+      0.9, BUCKET_DONT_CARE, 0.0, // tour 2 : action
+    ]);
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2'], actionTop: ['a1', 'a2'] }),
+      rng,
+    });
+    assert.equal(start.room.currentTurn.type, 'verite');
+
+    const answered = submitAnswer(start.room, { playerId: 'p1', text: 'réponse', rng });
+
+    assert.deepEqual(
+      answered.effects.map((e) => e.type),
+      ['CLEAR_TIMER', 'ANSWER_SUBMITTED', 'TURN_RESOLVED', 'TURN_STARTED', 'START_TIMER']
+    );
+    assert.equal(answered.effects.some((e) => e.type === 'START_TIMER' && e.name === 'vote'), false);
+
+    const resolved = answered.effects.find((e) => e.type === 'TURN_RESOLVED');
+    assert.equal(resolved.points, 1); // vérité = 1 point fixe, aucun pouce haut possible
+    assert.deepEqual(resolved.votes, {});
+
+    // tour 2 démarré directement, toujours en phase "answering"
+    assert.equal(answered.room.currentTurn.turnNumber, 2);
+    assert.equal(answered.room.currentTurn.phase, 'answering');
+    assert.equal(answered.room.currentTurn.activePlayerId, 'p2');
+  });
+
+  test('action vaut 2 points fixes à 2 joueurs, puis fin de partie', () => {
+    const room = twoPlayerRoom({ maxTurns: 1 });
+    const rng = createSequenceRng([0.9, BUCKET_DONT_CARE, 0.0]); // action
+    const start = startGame(room, { questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }), rng });
+
+    const answered = submitAnswer(start.room, { playerId: 'p1', text: 'action !' });
+    const resolved = answered.effects.find((e) => e.type === 'TURN_RESOLVED');
+    assert.equal(resolved.points, 2);
+
+    const ended = answered.effects.find((e) => e.type === 'GAME_ENDED');
+    assert.ok(ended, 'maxTurns=1 atteint, la partie doit se terminer');
+    assert.equal(answered.room.status, 'finished');
+  });
+
+  test('à 3 joueurs, le comportement de vote est inchangé', () => {
+    const room = threePlayerRoom({ maxTurns: 1 });
+    const rng = createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]);
+    const start = startGame(room, { questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }), rng });
+    const answered = submitAnswer(start.room, { playerId: 'p1', text: 'réponse' });
+
+    assert.deepEqual(
+      answered.effects.map((e) => e.type),
+      ['CLEAR_TIMER', 'ANSWER_SUBMITTED', 'START_TIMER']
+    );
+    assert.equal(answered.room.currentTurn.phase, 'voting');
+  });
+});
+
+describe('handlePlayerLeft', () => {
+  test('3 -> 2 joueurs en partie : la partie continue sans se terminer', () => {
+    const room = threePlayerRoom({ maxTurns: 2 });
+    const rng = createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]);
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2'], actionTop: ['a1', 'a2'] }),
+      rng,
+    });
+
+    const { room: afterLeft, effects } = handlePlayerLeft(start.room, 'p3');
+    assert.equal(afterLeft.status, 'playing');
+    assert.equal(afterLeft.turnOrder.length, 2);
+    assert.deepEqual(effects, []);
+  });
+
+  test('2 -> 1 joueur en partie : fin immédiate avec le classement en l\'état', () => {
+    const room = twoPlayerRoom({ maxTurns: 5 });
+    const rng = createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]);
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3', 'v4', 'v5'], actionTop: ['a1', 'a2', 'a3', 'a4', 'a5'] }),
+      rng,
+    });
+
+    const { room: afterLeft, effects } = handlePlayerLeft(start.room, 'p2');
+    assert.equal(afterLeft.status, 'finished');
+    assert.equal(afterLeft.currentTurn, null);
+
+    assert.deepEqual(
+      effects.map((e) => e.type),
+      ['CLEAR_TIMER', 'CLEAR_TIMER', 'GAME_ENDED']
+    );
+    const ended = effects.find((e) => e.type === 'GAME_ENDED');
+    assert.equal(ended.reason, 'notEnoughPlayers');
+    // Le classement final inclut aussi le joueur qui vient de partir (avec son
+    // dernier score), comme pour toute autre fin de partie.
+    assert.deepEqual(ended.ranking, [
+      { playerId: 'p1', score: 0 },
+      { playerId: 'p2', score: 0 },
+    ]);
+    assert.equal(afterLeft.players.find((p) => p.id === 'p2').status, 'left');
+  });
+
+  test("n'a pas d'effet de fin de partie si le salon n'est pas en cours", () => {
+    const room = threePlayerRoom({ maxTurns: 5 });
+    const { room: afterLeft, effects } = handlePlayerLeft(room, 'p3');
+    assert.equal(afterLeft.status, 'waiting');
+    assert.deepEqual(effects, []);
+    assert.equal(afterLeft.players.find((p) => p.id === 'p3').status, 'left');
   });
 });

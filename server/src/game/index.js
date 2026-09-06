@@ -14,5 +14,12 @@ export {
   getActivePlayer,
   canStart,
 } from './room.js';
-export { startGame, submitAnswer, answerTimeout, submitVote, voteTimeout } from './turn.js';
+export {
+  startGame,
+  submitAnswer,
+  answerTimeout,
+  submitVote,
+  voteTimeout,
+  handlePlayerLeft,
+} from './turn.js';
 export { validateMessageText, isWithinRateLimit } from './chat.js';

@@ -33,6 +33,12 @@ function TurnPanel({ turn, players, myId, onSubmitAnswer, onVote }) {
 
   const isActive = turn.activePlayerId === myId;
   const activeName = playerName(players, turn.activePlayerId);
+  // Le joueur actif ne vote pas pour lui-même : à 2 joueurs il ne resterait
+  // qu'un seul votant, ce qui vide le vote de son sens. Le serveur saute déjà
+  // la phase de vote dans ce cas (elle ne devrait donc jamais être observée
+  // ici), mais on masque aussi l'UI de vote par sécurité si jamais elle l'était.
+  const activePlayersCount = players.filter((p) => p.status !== 'left').length;
+  const voteEnabled = activePlayersCount > 2;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -98,7 +104,9 @@ function TurnPanel({ turn, players, myId, onSubmitAnswer, onVote }) {
       {turn.phase === 'voting' && (
         <>
           <p className="turn-answer-reveal">« {turn.answer} »</p>
-          {isActive ? (
+          {!voteEnabled ? (
+            <p className="menu-item-hint">Tour en cours de résolution…</p>
+          ) : isActive ? (
             <p className="menu-item-hint">En attente des votes des autres joueurs…</p>
           ) : myVote ? (
             <p className="menu-item-hint">Vote envoyé, en attente des autres…</p>

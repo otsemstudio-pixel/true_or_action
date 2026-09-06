@@ -10,7 +10,7 @@ import {
   restartRoom,
   markDisconnected,
   markReconnected,
-  excludePlayer,
+  handlePlayerLeft,
   getPlayer,
   startGame,
   submitAnswer,
@@ -161,17 +161,24 @@ function cleanupIfEmpty(entry, code) {
 export async function expireGrace(io, entry, code, playerId) {
   entry.graceTimers.delete(playerId);
   const wasWaiting = entry.room.status === 'waiting';
-  const updatedRoom = wasWaiting ? removePlayer(entry.room, playerId) : excludePlayer(entry.room, playerId);
 
-  await withTransaction(async (client) => {
-    if (wasWaiting) {
-      await repo.deleteRoomPlayer(client, entry.dbRoomId, Number(playerId));
-    } else {
+  if (wasWaiting) {
+    const updatedRoom = removePlayer(entry.room, playerId);
+    await repo.deleteRoomPlayer(pool, entry.dbRoomId, Number(playerId));
+    entry.room = updatedRoom;
+  } else {
+    // En partie : si un seul joueur reste après exclusion, handlePlayerLeft
+    // termine la partie immédiatement (effects contient alors GAME_ENDED et
+    // les CLEAR_TIMER correspondants) — sinon effects est vide.
+    const { room: updatedRoom, effects } = handlePlayerLeft(entry.room, playerId);
+    await withTransaction(async (client) => {
       await repo.updatePlayerState(client, entry.dbRoomId, Number(playerId), 'left');
-    }
-  });
+      await persistEffects(client, entry, updatedRoom, effects);
+    });
+    entry.room = updatedRoom;
+    broadcastEffects(io, entry, effects);
+  }
 
-  entry.room = updatedRoom;
   if (entry.room.players.length > 0) {
     broadcastPlayers(io, entry);
   }
