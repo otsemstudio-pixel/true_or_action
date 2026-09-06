@@ -44,6 +44,7 @@ import { generateRoomCode, createRoomEntry, getEntry, setEntry, deleteEntry, run
 import { setTimer, clearTimer, clearAllTimers, setGraceTimer, clearGraceTimer } from './timers.js';
 import { buildSnapshot } from './snapshot.js';
 import { verifyToken } from '../auth/token.js';
+import { touchLastSeen } from '../auth/repository.js';
 import { pool, withTransaction } from '../db/pool.js';
 import * as repo from '../db/repository.js';
 import { persistEffects } from './persistence.js';
@@ -362,9 +363,15 @@ export function registerSocketHandlers(io) {
       return next(new Error('AUTH_REQUIRED'));
     }
     try {
-      const { id, pseudo } = verifyToken(token);
+      const { id, pseudo, isGuest } = verifyToken(token);
       socket.data.playerId = String(id);
       socket.data.pseudo = pseudo;
+      socket.data.isGuest = isGuest;
+      // Un JWT d'invité se vérifie exactement comme un JWT normal (même
+      // secret, même schéma) : rien de spécial à faire pour l'accepter ici.
+      // On profite de la connexion pour repousser l'horloge d'inactivité
+      // (nettoyage à 90 jours, voir auth/repository.js deleteInactiveGuests).
+      if (isGuest) touchLastSeen(id).catch(() => {});
       next();
     } catch {
       next(new Error('INVALID_TOKEN'));
@@ -383,6 +390,7 @@ export function registerSocketHandlers(io) {
           code: '000000',
           hostId: socket.data.playerId,
           hostPseudo: socket.data.pseudo,
+          hostIsGuest: socket.data.isGuest,
           maxTurns,
           targetScore,
           langue,
@@ -419,6 +427,7 @@ export function registerSocketHandlers(io) {
           code,
           hostId: socket.data.playerId,
           hostPseudo: socket.data.pseudo,
+          hostIsGuest: socket.data.isGuest,
           maxTurns,
           targetScore,
           langue,
@@ -445,7 +454,11 @@ export function registerSocketHandlers(io) {
         if (!entry) throw new GameError('ROOM_NOT_FOUND', 'Salon introuvable');
 
         await runExclusive(entry, async () => {
-          const updatedRoom = addPlayer(entry.room, { id: socket.data.playerId, pseudo: socket.data.pseudo });
+          const updatedRoom = addPlayer(entry.room, {
+            id: socket.data.playerId,
+            pseudo: socket.data.pseudo,
+            isGuest: socket.data.isGuest,
+          });
           await repo.insertRoomPlayer(pool, entry.dbRoomId, Number(socket.data.playerId));
           entry.room = updatedRoom;
         });

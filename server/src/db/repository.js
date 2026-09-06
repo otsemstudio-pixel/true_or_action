@@ -186,7 +186,7 @@ export async function fetchCurrentPartie(db, roomId) {
 
 export async function fetchRoomPlayers(db, roomId) {
   const res = await db.query(
-    `SELECT rp.user_id, rp.ordre, rp.score, rp.state, rp.last_seen_at, u.pseudo
+    `SELECT rp.user_id, rp.ordre, rp.score, rp.state, rp.last_seen_at, u.pseudo, u.is_guest
      FROM room_players rp JOIN users u ON u.id = rp.user_id
      WHERE rp.room_id = $1 ORDER BY rp.ordre ASC`,
     [roomId]

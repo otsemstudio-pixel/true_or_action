@@ -18,6 +18,16 @@ export function validatePseudo(pseudo) {
   return trimmed;
 }
 
+// Pseudo passé au pseudo choisi par un invité quand il est déjà pris
+// (comptes complets ET invités partagent la même contrainte d'unicité en
+// base) : tronqué pour laisser la place au suffixe plutôt que de dépasser
+// la longueur maximale, jamais un simple refus.
+export function suffixedPseudo(pseudo) {
+  const suffix = String(Math.floor(1000 + Math.random() * 9000));
+  const base = pseudo.slice(0, 20 - suffix.length - 1);
+  return `${base}_${suffix}`;
+}
+
 export function validateEmail(email) {
   const trimmed = (email ?? '').trim().toLowerCase();
   if (!EMAIL_RE.test(trimmed)) {

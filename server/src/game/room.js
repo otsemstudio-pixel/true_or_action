@@ -104,6 +104,7 @@ export function createRoom({
   code,
   hostId,
   hostPseudo,
+  hostIsGuest = false,
   maxTurns = null,
   targetScore = null,
   niveauMax = 1,
@@ -123,7 +124,7 @@ export function createRoom({
     categorie: validateCategorie(categorie),
     langue: validateLangue(langue),
     maxPlayers: validateMaxPlayers(maxPlayers),
-    players: [{ id: hostId, pseudo: hostPseudo, score: 0, status: 'active' }],
+    players: [{ id: hostId, pseudo: hostPseudo, score: 0, status: 'active', isGuest: Boolean(hostIsGuest) }],
     turnOrder: [],
     currentTurnIndex: -1,
     turnNumber: 0,
@@ -217,7 +218,7 @@ export function updateRegles(room, regles) {
   return { ...room, regles: validateRegles(regles, room.regles) };
 }
 
-export function addPlayer(room, { id, pseudo }) {
+export function addPlayer(room, { id, pseudo, isGuest = false }) {
   if (room.status !== 'waiting') {
     throw new GameError('ROOM_NOT_JOINABLE', 'La partie a déjà commencé');
   }
@@ -230,7 +231,7 @@ export function addPlayer(room, { id, pseudo }) {
 
   return {
     ...room,
-    players: [...room.players, { id, pseudo, score: 0, status: 'active' }],
+    players: [...room.players, { id, pseudo, score: 0, status: 'active', isGuest: Boolean(isGuest) }],
   };
 }
 

@@ -28,6 +28,9 @@ export default {
     seConnecter: 'Se connecter',
     dejaUnCompte: 'Déjà un compte ?',
     pasEncoreDeCompte: 'Pas encore de compte ?',
+    jouerSansCompte: 'Jouer sans compte',
+    jouer: 'Jouer',
+    revenirConnexion: 'Retour à la connexion',
   },
 
   menu: {
@@ -41,6 +44,12 @@ export default {
     gererMesQuestions: 'Gérer mes questions',
     bientotDisponible: 'Bientôt disponible.',
     commentJouer: 'Comment jouer',
+  },
+
+  invite: {
+    badge: 'Invité',
+    creerUnCompte: 'Créer un compte',
+    creerUnCompteHint: 'Ajoutez un email et un mot de passe pour retrouver votre compte sur un autre appareil. Tout est conservé : pseudo, parties, questions.',
   },
 
   salon: {
@@ -306,5 +315,9 @@ export default {
     EMAIL_TAKEN: 'Cet email est déjà utilisé.',
     INVALID_CREDENTIALS: 'Email ou mot de passe incorrect.',
     UNAUTHORIZED: 'Authentification requise.',
+    GUEST_NOT_FOUND: 'Session invité introuvable, reconnectez-vous.',
+    INVALID_GUEST_TOKEN: 'Session invité invalide.',
+    NOT_A_GUEST: "Ce compte n'est pas un compte invité.",
+    GUEST_NOT_ALLOWED: 'Cette action est réservée aux comptes complets.',
   },
 };

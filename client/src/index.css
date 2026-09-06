@@ -561,6 +561,18 @@ input {
   padding: 2px var(--space-2);
 }
 
+.badge-invite {
+  display: inline-block;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  padding: 2px var(--space-2);
+  margin-left: var(--space-2);
+  vertical-align: middle;
+}
+
 .settings-mode {
   display: flex;
   gap: var(--space-2);

@@ -9,6 +9,7 @@ import ErrorBanner from '../components/ErrorBanner.jsx';
 import LangueSelector from '../components/LangueSelector.jsx';
 import ThemeSelector from '../components/ThemeSelector.jsx';
 import Tutoriel from '../components/Tutoriel.jsx';
+import ConvertirCompteModal from '../components/ConvertirCompteModal.jsx';
 import { hasTutorielSeen, shouldShowNouveautes, markTutorielSeen } from '../lib/tutoriel.js';
 
 const DEFAULT_MAX_TURNS = 10;
@@ -22,6 +23,7 @@ function MenuScreen() {
   const [error, setError] = useState(null);
   const [tutorielOpen, setTutorielOpen] = useState(false);
   const [tutorielView, setTutorielView] = useState('full');
+  const [convertOpen, setConvertOpen] = useState(false);
 
   // Proposé automatiquement une seule fois avant la première partie (vue
   // complète), puis reproposé sous forme de "Nouveautés" si des sections ont
@@ -89,9 +91,21 @@ function MenuScreen() {
         </button>
       </div>
 
-      <h1 className="menu-greeting">{t('menu.salut', { pseudo: user.pseudo })}</h1>
+      <h1 className="menu-greeting">
+        {t('menu.salut', { pseudo: user.pseudo })}
+        {user.isGuest && <span className="badge-invite">{t('invite.badge')}</span>}
+      </h1>
 
       <ErrorBanner>{error}</ErrorBanner>
+
+      {user.isGuest && (
+        <div className="menu-block menu-block--muted">
+          <p className="menu-block-hint">{t('invite.creerUnCompteHint')}</p>
+          <Button variant="ghost" block onClick={() => setConvertOpen(true)}>
+            {t('invite.creerUnCompte')}
+          </Button>
+        </div>
+      )}
 
       <div className="menu-block menu-block--action">
         <Button variant="dark" block arrow busy={busy === 'create'} disabled={busy !== null} onClick={handleCreate}>
@@ -122,6 +136,7 @@ function MenuScreen() {
       </div>
 
       <Tutoriel open={tutorielOpen} initialView={tutorielView} onClose={closeTutoriel} />
+      <ConvertirCompteModal open={convertOpen} onClose={() => setConvertOpen(false)} />
     </div>
   );
 }

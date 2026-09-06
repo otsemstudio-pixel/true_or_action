@@ -45,6 +45,28 @@ export function fetchMe(token) {
   });
 }
 
+export function playAsGuest({ pseudo, langue, theme }) {
+  return request('/api/auth/guest', {
+    method: 'POST',
+    body: JSON.stringify({ pseudo, langue, theme }),
+  });
+}
+
+export function resumeGuest(guestToken) {
+  return request('/api/auth/guest/resume', {
+    method: 'POST',
+    body: JSON.stringify({ guestToken }),
+  });
+}
+
+export function convertGuest(token, { email, password }) {
+  return request('/api/auth/convert', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ email, password }),
+  });
+}
+
 export function updateLangue(token, langue) {
   return request('/api/auth/langue', {
     method: 'POST',

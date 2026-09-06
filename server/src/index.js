@@ -6,6 +6,7 @@ import { env } from './config/env.js';
 import { pool } from './db/pool.js';
 import { registerSocketHandlers, reloadActiveRooms } from './sockets/index.js';
 import authRouter from './routes/auth.js';
+import { deleteInactiveGuests } from './auth/repository.js';
 
 const app = express();
 
@@ -45,6 +46,18 @@ async function start() {
     await reloadActiveRooms(io);
   } catch (err) {
     console.error('Échec du rechargement des parties en cours:', err.code || err.name || 'erreur inconnue');
+  }
+
+  // Comptes invités inactifs depuis 90 jours : voir auth/repository.js pour
+  // le détail des colonnes nullifiées vs supprimées (jamais de suppression
+  // en cascade des tours).
+  try {
+    const deleted = await deleteInactiveGuests(pool);
+    if (deleted > 0) {
+      console.log(`${deleted} compte(s) invité(s) inactif(s) supprimé(s)`);
+    }
+  } catch (err) {
+    console.error('Échec du nettoyage des comptes invités inactifs:', err.code || err.name || 'erreur inconnue');
   }
 
   httpServer.listen(env.port, () => {

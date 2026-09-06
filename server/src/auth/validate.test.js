@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { validatePseudo, validateEmail, validatePassword, validateLangue, validateTheme } from './validate.js';
+import { validatePseudo, validateEmail, validatePassword, validateLangue, validateTheme, suffixedPseudo } from './validate.js';
 
 describe('validatePseudo', () => {
   test('accepte un pseudo valide', () => {
@@ -13,6 +13,20 @@ describe('validatePseudo', () => {
 
   test('refuse les caractères spéciaux', () => {
     assert.throws(() => validatePseudo('joueur!'), (err) => err.code === 'INVALID_PSEUDO');
+  });
+});
+
+describe('suffixedPseudo', () => {
+  test('reste dans la forme valide pour validatePseudo, quelle que soit la longueur de base', () => {
+    for (const base of ['Bob', 'UnPseudoAssezLongDeVingtCar']) {
+      const result = suffixedPseudo(base.slice(0, 20));
+      assert.doesNotThrow(() => validatePseudo(result));
+    }
+  });
+
+  test('produit des suffixes différents à chaque appel (pas de boucle infinie garantie sur les collisions)', () => {
+    const results = new Set(Array.from({ length: 20 }, () => suffixedPseudo('Joueur')));
+    assert.ok(results.size > 1, 'au moins deux suffixes distincts sur 20 tirages');
   });
 });
 

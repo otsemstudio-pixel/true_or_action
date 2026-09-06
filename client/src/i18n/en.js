@@ -28,6 +28,9 @@ export default {
     seConnecter: 'Log in',
     dejaUnCompte: 'Already have an account?',
     pasEncoreDeCompte: "Don't have an account yet?",
+    jouerSansCompte: 'Play without an account',
+    jouer: 'Play',
+    revenirConnexion: 'Back to login',
   },
 
   menu: {
@@ -41,6 +44,12 @@ export default {
     gererMesQuestions: 'Manage my questions',
     bientotDisponible: 'Coming soon.',
     commentJouer: 'How to play',
+  },
+
+  invite: {
+    badge: 'Guest',
+    creerUnCompte: 'Create an account',
+    creerUnCompteHint: 'Add an email and password to find your account on another device. Everything is kept: nickname, games, questions.',
   },
 
   salon: {
@@ -301,5 +310,9 @@ export default {
     EMAIL_TAKEN: 'This email is already in use.',
     INVALID_CREDENTIALS: 'Incorrect email or password.',
     UNAUTHORIZED: 'Authentication required.',
+    GUEST_NOT_FOUND: 'Guest session not found, please reconnect.',
+    INVALID_GUEST_TOKEN: 'Invalid guest session.',
+    NOT_A_GUEST: 'This account is not a guest account.',
+    GUEST_NOT_ALLOWED: 'This action is reserved for full accounts.',
   },
 };

@@ -238,6 +238,7 @@ function SalonAttenteScreen() {
                 </span>
                 <span className={`status-dot${p.status !== 'active' ? ' status-dot--disconnected' : ''}`} />
                 {p.pseudo}
+                {p.isGuest && <span className="badge-invite">{t('invite.badge')}</span>}
               </span>
               {p.id === room.hostId && <span className="player-badge-host">{t('commun.hote')}</span>}
             </li>
