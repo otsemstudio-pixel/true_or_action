@@ -9,7 +9,13 @@ export const VOTE_BONUS = 1;
 export const VOTE_BONUS_MAX = 5;
 
 export const TIMERS = {
-  answerMs: 90_000,
+  // Nouveau défaut : 90s cassait le rythme, surtout à plusieurs joueurs.
+  // Réglable par l'hôte (voir game/room.js updateAnswerSec) parmi
+  // answerSecOptions ; cette constante ne sert plus que de valeur par défaut
+  // à la création d'un salon.
+  answerMs: 45_000,
+  answerSecOptions: [30, 45, 60, 90],
+  // Minuteur de vote : volontairement non réglable (voir tâche).
   voteMs: 30_000,
   disconnectGraceMs: 120_000,
 };

@@ -6,7 +6,7 @@ import { REGLE_KEYS } from './ReglesActives.jsx';
 const POINTS_VERITE = 1;
 const POINTS_ACTION = 2;
 const VOTE_BONUS = 1;
-const ANSWER_SECONDS = 90;
+const DEFAULT_ANSWER_SECONDS = 45;
 const VOTE_SECONDS = 30;
 
 // L'essentiel du déroulé d'un tour : toujours affiché en premier, jamais
@@ -112,7 +112,7 @@ function NouveautesView({ t, onVoirTout, onClose }) {
   );
 }
 
-function Tutoriel({ open, onClose, regles, categorie, initialView = 'full' }) {
+function Tutoriel({ open, onClose, regles, categorie, answerSec = DEFAULT_ANSWER_SECONDS, initialView = 'full' }) {
   const { t } = useI18n();
   const [view, setView] = useState(initialView);
   const [openSection, setOpenSection] = useState(null);
@@ -163,7 +163,7 @@ function Tutoriel({ open, onClose, regles, categorie, initialView = 'full' }) {
                     verite: POINTS_VERITE,
                     action: POINTS_ACTION,
                     bonus: VOTE_BONUS,
-                    answer: ANSWER_SECONDS,
+                    answer: answerSec,
                     vote: VOTE_SECONDS,
                   })}
                 </p>

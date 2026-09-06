@@ -818,7 +818,7 @@ function startAnsweringTurn(room, activePlayerId, rng, { doubleOuRien = false, f
     room: room2,
     effects: [
       { type: 'TURN_STARTED', turnNumber, activePlayerId, questionType: type, questionId, doubleOuRien },
-      { type: 'START_TIMER', name: 'answer', turnNumber, durationMs: TIMERS.answerMs },
+      { type: 'START_TIMER', name: 'answer', turnNumber, durationMs: room.answerSec * 1000 },
     ],
   };
 }
@@ -854,7 +854,7 @@ function startSurpriseTurn(room, rng) {
         questionType: type,
         questionId,
       },
-      { type: 'START_TIMER', name: 'answer', turnNumber, durationMs: TIMERS.answerMs },
+      { type: 'START_TIMER', name: 'answer', turnNumber, durationMs: room.answerSec * 1000 },
     ],
   };
 }

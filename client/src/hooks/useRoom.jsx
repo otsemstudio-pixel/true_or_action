@@ -19,6 +19,7 @@ const initialState = {
   settings: null,
   niveauMax: 1,
   maxPlayers: 8,
+  answerSec: 45,
   categorie: 'general',
   langue: 'fr',
   regles: DEFAULT_REGLES,
@@ -43,6 +44,7 @@ function snapshotToState(snapshot) {
     settings: snapshot.settings,
     niveauMax: snapshot.niveauMax,
     maxPlayers: snapshot.maxPlayers ?? 8,
+    answerSec: snapshot.answerSec ?? 45,
     categorie: snapshot.categorie ?? 'general',
     langue: snapshot.langue ?? 'fr',
     regles: snapshot.regles ?? DEFAULT_REGLES,
@@ -149,6 +151,9 @@ export function RoomProvider({ children }) {
     }
     function onNiveau({ niveauMax }) {
       setRoom((prev) => (prev.status === 'idle' ? prev : { ...prev, niveauMax }));
+    }
+    function onTimeout({ answerSec }) {
+      setRoom((prev) => (prev.status === 'idle' ? prev : { ...prev, answerSec }));
     }
     function onMaxPlayers({ maxPlayers }) {
       setRoom((prev) => (prev.status === 'idle' ? prev : { ...prev, maxPlayers }));
@@ -387,6 +392,7 @@ export function RoomProvider({ children }) {
     socket.on('room:players', onPlayers);
     socket.on('room:settings', onSettings);
     socket.on('room:niveau', onNiveau);
+    socket.on('room:timeout', onTimeout);
     socket.on('room:maxPlayers', onMaxPlayers);
     socket.on('room:categorie', onCategorie);
     socket.on('room:langue', onLangue);
@@ -413,6 +419,7 @@ export function RoomProvider({ children }) {
       socket.off('room:players', onPlayers);
       socket.off('room:settings', onSettings);
       socket.off('room:niveau', onNiveau);
+      socket.off('room:timeout', onTimeout);
       socket.off('room:maxPlayers', onMaxPlayers);
       socket.off('room:categorie', onCategorie);
       socket.off('room:langue', onLangue);
@@ -465,6 +472,12 @@ export function RoomProvider({ children }) {
   const updateNiveauMax = useCallback(async (niveauMax) => {
     const res = await emitWithAck('room:niveau', { niveauMax });
     setRoom((prev) => ({ ...prev, niveauMax: res.niveauMax }));
+    return res;
+  }, []);
+
+  const updateAnswerSec = useCallback(async (answerSec) => {
+    const res = await emitWithAck('room:timeout', { answerSec });
+    setRoom((prev) => ({ ...prev, answerSec: res.answerSec }));
     return res;
   }, []);
 
@@ -536,6 +549,7 @@ export function RoomProvider({ children }) {
         leaveRoom,
         updateRoomSettings,
         updateNiveauMax,
+        updateAnswerSec,
         updateMaxPlayers,
         updateCategorie,
         updateRoomLangue,

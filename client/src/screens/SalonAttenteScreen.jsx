@@ -9,6 +9,7 @@ import ErrorBanner from '../components/ErrorBanner.jsx';
 import Tutoriel from '../components/Tutoriel.jsx';
 import ReglesActives, { REGLE_KEYS } from '../components/ReglesActives.jsx';
 import { NIVEAUX } from '../lib/niveau.js';
+import { ANSWER_SEC_OPTIONS } from '../lib/timers.js';
 import { markTutorielSeen } from '../lib/tutoriel.js';
 
 const MIN_PLAYERS = 2;
@@ -27,6 +28,7 @@ function SalonAttenteScreen() {
     leaveRoom,
     updateRoomSettings,
     updateNiveauMax,
+    updateAnswerSec,
     updateMaxPlayers,
     updateCategorie,
     updateRoomLangue,
@@ -37,6 +39,7 @@ function SalonAttenteScreen() {
   const isHost = String(user.id) === room.hostId;
   const isCouple = room.categorie === 'couple';
   const [niveauBusy, setNiveauBusy] = useState(false);
+  const [answerSecBusy, setAnswerSecBusy] = useState(false);
   const [langueBusy, setLangueBusy] = useState(false);
   const [reglesBusy, setReglesBusy] = useState(false);
   const [maxPlayersBusy, setMaxPlayersBusy] = useState(false);
@@ -84,6 +87,19 @@ function SalonAttenteScreen() {
       setError(translateError(t, err));
     } finally {
       setNiveauBusy(false);
+    }
+  };
+
+  const handleAnswerSecChange = async (value) => {
+    if (value === room.answerSec) return;
+    setError(null);
+    setAnswerSecBusy(true);
+    try {
+      await updateAnswerSec(value);
+    } catch (err) {
+      setError(translateError(t, err));
+    } finally {
+      setAnswerSecBusy(false);
     }
   };
 
@@ -305,6 +321,30 @@ function SalonAttenteScreen() {
       </div>
 
       <div className="card">
+        <h2>{t('salon.tempsDeReponse')}</h2>
+        {isHost ? (
+          <>
+            <div className="settings-mode">
+              {ANSWER_SEC_OPTIONS.map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`btn btn-ghost${room.answerSec === value ? ' btn-mode-active' : ''}`}
+                  disabled={answerSecBusy}
+                  onClick={() => handleAnswerSecChange(value)}
+                >
+                  {t('salon.secondes', { count: value })}
+                </button>
+              ))}
+            </div>
+            <p className="menu-item-hint">{t('salon.tempsDeReponseHint')}</p>
+          </>
+        ) : (
+          <p>{t('salon.secondesAffiche', { count: room.answerSec })}</p>
+        )}
+      </div>
+
+      <div className="card">
         {!isCouple && (
           <>
             <h2>{t('salon.niveauDesQuestions')}</h2>
@@ -401,6 +441,7 @@ function SalonAttenteScreen() {
         open={tutorielOpen}
         regles={room.regles}
         categorie={room.categorie}
+        answerSec={room.answerSec}
         onClose={() => {
           markTutorielSeen();
           setTutorielOpen(false);

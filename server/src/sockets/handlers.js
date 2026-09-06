@@ -7,6 +7,7 @@ import {
   createRoom,
   updateSettings,
   updateNiveauMax,
+  updateAnswerSec,
   updateMaxPlayers,
   updateCategorie,
   updateLangue,
@@ -78,10 +79,13 @@ function broadcastPlayers(io, entry) {
   io.to(entry.room.code).emit('room:regles', { regles: effectiveRegles(entry.room) });
 }
 
-function enrichEffects(effects) {
+function enrichEffects(effects, room) {
   return effects.map((effect) => {
     if (effect.type === 'TURN_STARTED') {
-      return { ...effect, answerDeadline: Date.now() + TIMERS.answerMs };
+      // room.answerSec est réglable par l'hôte (voir room:timeout) : jamais
+      // la constante TIMERS.answerMs, qui ne sert plus que de valeur par
+      // défaut à la création d'un salon.
+      return { ...effect, answerDeadline: Date.now() + room.answerSec * 1000 };
     }
     if (effect.type === 'ANSWER_SUBMITTED') {
       return { ...effect, voteDeadline: Date.now() + TIMERS.voteMs };
@@ -270,7 +274,7 @@ function broadcastEffects(io, entry, effects, newAnswerMessage = null) {
 // (entry.room) n'est mise à jour qu'une fois l'écriture en base confirmée :
 // en cas d'échec, le cache reste sur son ancien état cohérent avec la base.
 export async function applyGameEffects(io, entry, newRoom, effects) {
-  const enriched = enrichEffects(effects);
+  const enriched = enrichEffects(effects, newRoom);
   const { newTurnDbId, newAnswerMessage } = await withTransaction((client) =>
     persistEffects(client, entry, newRoom, enriched)
   );
@@ -588,6 +592,28 @@ export function registerSocketHandlers(io) {
       }
     });
 
+    // Temps de réponse (phase "answering"), réglable par l'hôte tant que le
+    // salon attend ; le minuteur de vote, lui, reste fixe (pas de handler).
+    socket.on('room:timeout', async (payload, ack) => {
+      try {
+        const entry = requireEntry(socket);
+        if (entry.room.hostId !== socket.data.playerId) {
+          throw new GameError('NOT_HOST', "Seul l'hôte peut modifier le temps de réponse");
+        }
+        const { answerSec } = payload ?? {};
+        await runExclusive(entry, async () => {
+          const updatedRoom = updateAnswerSec(entry.room, answerSec);
+          await repo.updateRoomTimeoutSec(pool, entry.dbRoomId, answerSec);
+          entry.room = updatedRoom;
+        });
+
+        io.to(entry.room.code).emit('room:timeout', { answerSec: entry.room.answerSec });
+        ack?.({ ok: true, answerSec: entry.room.answerSec });
+      } catch (err) {
+        ack?.(errorResponse(err));
+      }
+    });
+
     socket.on('room:maxPlayers', async (payload, ack) => {
       try {
         const entry = requireEntry(socket);
@@ -740,7 +766,7 @@ export function registerSocketHandlers(io) {
           }
 
           const { room, effects } = startGame(entry.room, { questionPool });
-          const effectsEnriched = enrichEffects(effects);
+          const effectsEnriched = enrichEffects(effects, room);
 
           const { newTurnDbId } = await withTransaction(async (client) => {
             await repo.updateRoomStatus(client, entry.dbRoomId, 'playing');

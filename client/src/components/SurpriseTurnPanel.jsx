@@ -5,7 +5,6 @@ import ErrorBanner from './ErrorBanner.jsx';
 import { useI18n } from '../hooks/useI18n.jsx';
 import { translateError } from '../i18n/index.js';
 
-const ANSWER_SECONDS = 90;
 const VOTE_SECONDS = 30;
 
 function playerName(players, id) {
@@ -17,7 +16,7 @@ function playerName(players, id) {
 // qu'une variante de TurnPanel — la forme des données (plusieurs répondants,
 // vote par cible plutôt que pouce haut/bas) est trop différente pour partager
 // le même composant sans le complexifier inutilement.
-function SurpriseTurnPanel({ turn, players, myId, onSubmitAnswer, onVote }) {
+function SurpriseTurnPanel({ turn, players, myId, answerSec, onSubmitAnswer, onVote }) {
   const { t } = useI18n();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -62,7 +61,7 @@ function SurpriseTurnPanel({ turn, players, myId, onSubmitAnswer, onVote }) {
     <div className="turn-panel turn-panel--surprise">
       <div className="turn-panel-header">
         <span className="regle-badge">{t('partie.tourSurpriseTitre')}</span>
-        {turn.phase === 'answering' && <Timer deadline={turn.answerDeadline} totalSeconds={ANSWER_SECONDS} />}
+        {turn.phase === 'answering' && <Timer deadline={turn.answerDeadline} totalSeconds={answerSec} />}
         {turn.phase === 'voting' && <Timer deadline={turn.voteDeadline} totalSeconds={VOTE_SECONDS} />}
       </div>
 

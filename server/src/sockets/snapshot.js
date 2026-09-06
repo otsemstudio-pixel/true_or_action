@@ -56,6 +56,7 @@ export function buildSnapshot(entry) {
     settings: room.settings,
     niveauMax: room.niveauMax,
     maxPlayers: room.maxPlayers,
+    answerSec: room.answerSec,
     categorie: room.categorie,
     langue: room.langue,
     // Vue effective (pari mutuel selon le nombre de joueurs, double ou rien

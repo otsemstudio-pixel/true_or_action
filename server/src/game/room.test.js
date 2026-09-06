@@ -4,6 +4,7 @@ import {
   createRoom,
   updateSettings,
   updateNiveauMax,
+  updateAnswerSec,
   updateMaxPlayers,
   updateCategorie,
   updateLangue,
@@ -96,6 +97,45 @@ describe('updateNiveauMax', () => {
   test('refuse après le lancement de la partie', () => {
     const room = { ...baseRoom(), status: 'playing' };
     assert.throws(() => updateNiveauMax(room, 2), (err) => err.code === 'ROOM_NOT_JOINABLE');
+  });
+});
+
+describe('answerSec (temps de réponse réglable)', () => {
+  test('défaut à 45 secondes à la création', () => {
+    assert.equal(baseRoom().answerSec, 45);
+  });
+
+  test('accepte une valeur personnalisée parmi les options à la création', () => {
+    const room = createRoom({ code: 'ABCD', hostId: 'p1', hostPseudo: 'Hôte', maxTurns: 5, answerSec: 90 });
+    assert.equal(room.answerSec, 90);
+  });
+
+  test('rejette une valeur hors de [30, 45, 60, 90] à la création', () => {
+    assert.throws(
+      () => createRoom({ code: 'ABCD', hostId: 'p1', hostPseudo: 'Hôte', maxTurns: 5, answerSec: 40 }),
+      (err) => err.code === 'INVALID_ANSWER_SEC'
+    );
+  });
+
+  test('updateAnswerSec change la valeur tant que le salon attend', () => {
+    for (const value of [30, 45, 60, 90]) {
+      assert.equal(updateAnswerSec(baseRoom(), value).answerSec, value);
+    }
+  });
+
+  test('updateAnswerSec rejette une valeur non listée', () => {
+    assert.throws(() => updateAnswerSec(baseRoom(), 20), (err) => err.code === 'INVALID_ANSWER_SEC');
+    assert.throws(() => updateAnswerSec(baseRoom(), 75), (err) => err.code === 'INVALID_ANSWER_SEC');
+  });
+
+  test('updateAnswerSec refuse après le lancement de la partie', () => {
+    const room = { ...baseRoom(), status: 'playing' };
+    assert.throws(() => updateAnswerSec(room, 30), (err) => err.code === 'ROOM_NOT_JOINABLE');
+  });
+
+  test('survit à un rejeu (restartRoom)', () => {
+    const started = { ...updateAnswerSec(baseRoom(), 60), status: 'finished' };
+    assert.equal(restartRoom(started).answerSec, 60);
   });
 });
 

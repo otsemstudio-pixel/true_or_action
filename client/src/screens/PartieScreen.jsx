@@ -57,6 +57,7 @@ function PartieScreen() {
             turn={room.currentTurn}
             players={room.players}
             myId={myId}
+            answerSec={room.answerSec}
             onSubmitAnswer={sendSurpriseAnswer}
             onVote={sendSurpriseVote}
           />
@@ -67,6 +68,7 @@ function PartieScreen() {
               players={room.players}
               myId={myId}
               regles={room.regles}
+              answerSec={room.answerSec}
               onSubmitAnswer={sendAnswer}
               onPass={sendPass}
               onChooseQuestion={chooseQuestion}

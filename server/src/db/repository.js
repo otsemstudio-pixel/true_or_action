@@ -65,6 +65,10 @@ export async function updateRoomNiveauMax(db, roomId, niveauMax) {
   await db.query('UPDATE rooms SET niveau_max = $1 WHERE id = $2', [niveauMax, roomId]);
 }
 
+export async function updateRoomTimeoutSec(db, roomId, timeoutSec) {
+  await db.query('UPDATE rooms SET timeout_sec = $1 WHERE id = $2', [timeoutSec, roomId]);
+}
+
 export async function updateRoomMaxPlayers(db, roomId, maxPlayers) {
   await db.query('UPDATE rooms SET max_players = $1 WHERE id = $2', [maxPlayers, roomId]);
 }

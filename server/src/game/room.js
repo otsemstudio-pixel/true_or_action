@@ -1,5 +1,5 @@
 import { GameError } from './errors.js';
-import { PLAYERS } from './constants.js';
+import { PLAYERS, TIMERS } from './constants.js';
 import { SUPPORTED_LANGUES } from '../config/langues.js';
 import { SUPPORTED_CATEGORIES, DEFAULT_CATEGORIE } from '../config/categories.js';
 
@@ -47,6 +47,15 @@ function validateCategorie(categorie) {
     });
   }
   return categorie;
+}
+
+function validateAnswerSec(answerSec) {
+  if (!TIMERS.answerSecOptions.includes(answerSec)) {
+    throw new GameError('INVALID_ANSWER_SEC', 'Le temps de réponse doit être 30, 45, 60 ou 90 secondes', {
+      allowed: TIMERS.answerSecOptions,
+    });
+  }
+  return answerSec;
 }
 
 function validateLangue(langue) {
@@ -112,6 +121,7 @@ export function createRoom({
   categorie = DEFAULT_CATEGORIE,
   regles = {},
   maxPlayers = categorie === 'couple' ? PLAYERS.coupleMax : PLAYERS.defaultMax,
+  answerSec = TIMERS.answerMs / 1000,
 }) {
   const settings = validateSettings(maxTurns, targetScore);
 
@@ -124,6 +134,7 @@ export function createRoom({
     categorie: validateCategorie(categorie),
     langue: validateLangue(langue),
     maxPlayers: validateMaxPlayers(maxPlayers),
+    answerSec: validateAnswerSec(answerSec),
     players: [{ id: hostId, pseudo: hostPseudo, score: 0, status: 'active', isGuest: Boolean(hostIsGuest) }],
     turnOrder: [],
     currentTurnIndex: -1,
@@ -156,6 +167,15 @@ export function updateNiveauMax(room, niveauMax) {
     throw new GameError('CATEGORIE_LOCKS_NIVEAU', "Le niveau ne s'applique pas en mode couple");
   }
   return { ...room, niveauMax: validateNiveauMax(niveauMax) };
+}
+
+// Temps de réponse (phase "answering" d'un tour normal ou surprise) : le
+// minuteur de vote, lui, reste fixe et non réglable (voir constants.js).
+export function updateAnswerSec(room, answerSec) {
+  if (room.status !== 'waiting') {
+    throw new GameError('ROOM_NOT_JOINABLE', 'Impossible de modifier le temps de réponse après le lancement');
+  }
+  return { ...room, answerSec: validateAnswerSec(answerSec) };
 }
 
 export function updateMaxPlayers(room, maxPlayers) {

@@ -94,6 +94,27 @@ describe('startGame', () => {
     assert.equal(start.room.status, 'playing');
   });
 
+  test('le minuteur de réponse reflète answerSec du salon, pas une constante fixe', () => {
+    const room = twoPlayerRoom({ maxTurns: 1, answerSec: 30 });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    const timer = start.effects.find((e) => e.type === 'START_TIMER' && e.name === 'answer');
+    assert.equal(timer.durationMs, 30_000);
+  });
+
+  test('le minuteur de réponse reflète answerSec aussi pour un tour surprise', () => {
+    const room = threePlayerRoom({ maxTurns: 1, answerSec: 60, regles: { tourSurprise: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2', 'v3'], actionTop: ['a1', 'a2', 'a3'] }),
+      rng: createSequenceRng([0.01, 0.1, BUCKET_DONT_CARE, 0.0]), // 0.01 < 0.2 : déclenche le tour surprise
+    });
+    assert.equal(start.room.currentTurn.mode, 'surprise');
+    const timer = start.effects.find((e) => e.type === 'START_TIMER' && e.name === 'answer');
+    assert.equal(timer.durationMs, 60_000);
+  });
+
   test('refuse si les questions sont insuffisantes et indique combien il en manque', () => {
     const room = threePlayerRoom({ maxTurns: 3 });
     assert.throws(

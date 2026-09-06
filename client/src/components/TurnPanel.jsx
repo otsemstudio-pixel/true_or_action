@@ -5,7 +5,6 @@ import ErrorBanner from './ErrorBanner.jsx';
 import { useI18n } from '../hooks/useI18n.jsx';
 import { translateError } from '../i18n/index.js';
 
-const ANSWER_SECONDS = 90;
 const VOTE_SECONDS = 30;
 const NIVEAU_CHOICE_SECONDS = 15;
 const QUESTION_CHOICE_SECONDS = 20;
@@ -25,6 +24,7 @@ function TurnPanel({
   players,
   myId,
   regles,
+  answerSec,
   onSubmitAnswer,
   onPass,
   onChooseQuestion,
@@ -147,7 +147,7 @@ function TurnPanel({
           {turn.type === 'verite' ? t('partie.verite') : t('partie.action')}
         </span>
         {turn.doubleOuRien && <span className="regle-badge">{t('partie.doubleOuRienBadge')}</span>}
-        {turn.phase === 'answering' && <Timer deadline={turn.answerDeadline} totalSeconds={ANSWER_SECONDS} />}
+        {turn.phase === 'answering' && <Timer deadline={turn.answerDeadline} totalSeconds={answerSec} />}
         {turn.phase === 'voting' && <Timer deadline={turn.voteDeadline} totalSeconds={VOTE_SECONDS} />}
         {turn.phase === 'jugement' && <Timer deadline={turn.jugementDeadline} totalSeconds={JUGEMENT_SECONDS} />}
       </div>

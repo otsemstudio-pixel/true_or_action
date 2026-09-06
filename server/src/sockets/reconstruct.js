@@ -114,6 +114,7 @@ export async function loadRoomEntryFromDb(roomRow) {
     niveauMax: roomRow.niveau_max ?? 1,
     langue: roomRow.langue ?? 'fr',
     maxPlayers: roomRow.max_players ?? 8,
+    answerSec: roomRow.timeout_sec ?? 45,
     categorie,
     players,
     turnOrder,
