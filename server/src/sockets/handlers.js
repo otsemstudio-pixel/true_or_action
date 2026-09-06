@@ -520,6 +520,47 @@ export function registerSocketHandlers(io) {
       }
     });
 
+    socket.on('recap:fetch', async (_, ack) => {
+      try {
+        const entry = requireEntry(socket);
+        if (!entry.dbPartieId) {
+          ack?.({ ok: true, turns: [] });
+          return;
+        }
+
+        // Toujours reconstruit depuis turns/questions/users, jamais depuis le
+        // cache mémoire du chat : c'est la source de vérité pour l'historique.
+        const rows = await repo.fetchTurnsRecap(pool, entry.dbPartieId);
+        const votesRows = await repo.fetchVotesForTurns(
+          pool,
+          rows.map((r) => r.id)
+        );
+        const votesByTurn = new Map();
+        for (const v of votesRows) {
+          const agg = votesByTurn.get(v.turn_id) ?? { up: 0, down: 0 };
+          if (v.valeur === 1) agg.up += 1;
+          else agg.down += 1;
+          votesByTurn.set(v.turn_id, agg);
+        }
+
+        const turns = rows.map((r) => ({
+          turnNumber: r.numero,
+          playerId: String(r.player_id),
+          pseudo: r.pseudo,
+          type: r.type,
+          contenu: r.contenu,
+          answer: r.reponse,
+          points: r.points,
+          timedOut: r.status === 'timeout',
+          votes: votesByTurn.get(r.id) ?? { up: 0, down: 0 },
+        }));
+
+        ack?.({ ok: true, turns });
+      } catch (err) {
+        ack?.(errorResponse(err));
+      }
+    });
+
     socket.on('chat:send', async (payload, ack) => {
       const clientId = payload?.clientId;
       try {

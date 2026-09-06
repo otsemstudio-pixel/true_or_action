@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../hooks/useI18n.jsx';
+import AnswerCard from './AnswerCard.jsx';
 
 const MAX_LENGTH = 300;
 
@@ -8,17 +9,30 @@ function makeClientId() {
   return `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function ChatPanel({ messages, myId, onSend }) {
+// Fusionne les messages libres et les blocs de réponse dans un seul fil,
+// triés par horodatage : les réponses ne défilent plus sans laisser de trace,
+// elles vivent au même endroit que la discussion.
+function buildFeed(messages, answerCards) {
+  const items = [
+    ...messages.map((m) => ({ kind: 'message', key: `m-${m.id}`, createdAt: m.createdAt, data: m })),
+    ...answerCards.map((c) => ({ kind: 'answer', key: `a-${c.turnNumber}`, createdAt: c.createdAt, data: c })),
+  ];
+  return items.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+function ChatPanel({ messages, answerCards, players, myId, currentTurn, onSend, onVote }) {
   const { t } = useI18n();
   const [text, setText] = useState('');
   const [pending, setPending] = useState([]);
   const [error, setError] = useState(null);
   const listRef = useRef(null);
 
+  const feed = useMemo(() => buildFeed(messages, answerCards), [messages, answerCards]);
+
   useEffect(() => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, pending]);
+  }, [feed, pending]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -55,15 +69,27 @@ function ChatPanel({ messages, myId, onSend }) {
     <div className="card chat-panel">
       <h2>{t('chat.titre')}</h2>
       <div className="chat-list" ref={listRef}>
-        {messages.length === 0 && pending.length === 0 && (
-          <p className="menu-item-hint">{t('chat.aucunMessage')}</p>
+        {feed.length === 0 && pending.length === 0 && <p className="menu-item-hint">{t('chat.aucunMessage')}</p>}
+        {feed.map((item) =>
+          item.kind === 'message' ? (
+            <div
+              key={item.key}
+              className={`chat-message${item.data.playerId === myId ? ' chat-message--mine' : ''}`}
+            >
+              <span className="chat-message-author">{item.data.pseudo}</span>
+              <span className="chat-message-text">{item.data.text}</span>
+            </div>
+          ) : (
+            <AnswerCard
+              key={item.key}
+              card={item.data}
+              players={players}
+              myId={myId}
+              currentTurn={currentTurn}
+              onVote={onVote}
+            />
+          )
         )}
-        {messages.map((m) => (
-          <div key={m.id} className={`chat-message${m.playerId === myId ? ' chat-message--mine' : ''}`}>
-            <span className="chat-message-author">{m.pseudo}</span>
-            <span className="chat-message-text">{m.text}</span>
-          </div>
-        ))}
         {pending.map((m) => (
           <div key={m.clientId} className="chat-message chat-message--mine chat-message--pending">
             <span className="chat-message-text">{m.text}</span>

@@ -506,6 +506,24 @@ input {
   margin-top: calc(var(--space-2) * -1);
 }
 
+.partie-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-top: calc(var(--space-2) * -1);
+}
+
+.partie-toolbar .niveau-indicator {
+  margin-top: 0;
+}
+
+.partie-toolbar .btn {
+  min-height: auto;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+}
+
 /* Tableau des scores */
 
 .scoreboard {
@@ -816,6 +834,97 @@ input {
 
 .chat-send-btn {
   padding: 0 var(--space-4);
+}
+
+/* Bloc de réponse (encadré, distinct d'un message de chat) */
+
+.answer-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+}
+
+.answer-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.answer-card-author {
+  font-weight: 700;
+  color: var(--color-verite);
+}
+
+.answer-card-question {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.answer-card-response {
+  font-size: var(--text-sm);
+  font-style: italic;
+  color: var(--color-text-muted);
+}
+
+.answer-card-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.answer-card-points {
+  display: inline-flex;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+  background: rgba(51, 214, 192, 0.15);
+  color: var(--color-verite);
+  font-weight: 700;
+  font-size: var(--text-sm);
+}
+
+.answer-card-thumbs {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+/* Panneau modal (récapitulatif) */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 30;
+}
+
+.modal-panel {
+  width: 100%;
+  max-width: 480px;
+  max-height: 80vh;
+  overflow-y: auto;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.recap-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
 /* Écran de fin */

@@ -11,13 +11,39 @@ const initialState = {
   settings: null,
   niveauMax: 1,
   langue: 'fr',
+  partieId: null,
   players: [],
   turnNumber: 0,
   currentTurn: null,
   messages: [],
+  answerCards: [],
   lastResult: null,
   ranking: null,
 };
+
+// Si la reconnexion tombe en pleine phase de vote, la réponse du tour en
+// cours est déjà connue (reconstruite depuis la base) : on la matérialise en
+// carte de réponse tout de suite pour ne pas laisser le fil de chat vide en
+// attendant un futur événement qui ne reviendra pas.
+function seedAnswerCards(snapshot) {
+  const turn = snapshot.currentTurn;
+  if (!turn || turn.answer == null) return [];
+  const pseudo = snapshot.players.find((p) => p.id === turn.activePlayerId)?.pseudo ?? '';
+  return [
+    {
+      turnNumber: turn.turnNumber,
+      playerId: turn.activePlayerId,
+      pseudo,
+      type: turn.type,
+      contenu: turn.contenu,
+      answer: turn.answer,
+      phase: turn.phase === 'resolved' ? 'resolved' : 'voting',
+      votes: turn.votes ?? {},
+      points: null,
+      createdAt: Date.now(),
+    },
+  ];
+}
 
 function snapshotToState(snapshot) {
   return {
@@ -27,10 +53,12 @@ function snapshotToState(snapshot) {
     settings: snapshot.settings,
     niveauMax: snapshot.niveauMax,
     langue: snapshot.langue ?? 'fr',
+    partieId: snapshot.partieId ?? null,
     players: snapshot.players,
     turnNumber: snapshot.turnNumber,
     currentTurn: snapshot.currentTurn,
     messages: snapshot.messages ?? [],
+    answerCards: seedAnswerCards(snapshot),
   };
 }
 
@@ -117,6 +145,19 @@ export function RoomProvider({ children }) {
     function onTurnAnswered(payload) {
       setRoom((prev) => {
         if (!prev.currentTurn || prev.currentTurn.turnNumber !== payload.turnNumber) return prev;
+        const pseudo = prev.players.find((p) => p.id === payload.playerId)?.pseudo ?? '';
+        const card = {
+          turnNumber: payload.turnNumber,
+          playerId: payload.playerId,
+          pseudo,
+          type: prev.currentTurn.type,
+          contenu: prev.currentTurn.contenu,
+          answer: payload.answer,
+          phase: 'voting',
+          votes: {},
+          points: null,
+          createdAt: Date.now(),
+        };
         return {
           ...prev,
           currentTurn: {
@@ -125,6 +166,7 @@ export function RoomProvider({ children }) {
             answer: payload.answer,
             voteDeadline: payload.voteDeadline,
           },
+          answerCards: [...prev.answerCards.filter((c) => c.turnNumber !== payload.turnNumber), card],
         };
       });
     }
@@ -141,20 +183,40 @@ export function RoomProvider({ children }) {
       });
     }
     function onTurnResolved(payload) {
-      setRoom((prev) => ({
-        ...prev,
-        players: payload.players,
-        lastResult: {
+      setRoom((prev) => {
+        // Le tour peut se résoudre sans jamais avoir déclenché onTurnAnswered
+        // (timeout de réponse) : la carte n'existe pas encore, on la crée ici
+        // à partir de ce qui reste de currentTurn, avec une réponse nulle.
+        const existingCard = prev.answerCards.find((c) => c.turnNumber === payload.turnNumber);
+        const pseudo = prev.players.find((p) => p.id === payload.playerId)?.pseudo ?? '';
+        const resolvedCard = {
           turnNumber: payload.turnNumber,
           playerId: payload.playerId,
-          points: payload.points,
+          pseudo,
+          type: existingCard?.type ?? prev.currentTurn?.type ?? null,
+          contenu: existingCard?.contenu ?? prev.currentTurn?.contenu ?? null,
+          answer: existingCard?.answer ?? null,
+          phase: 'resolved',
           votes: payload.votes,
-        },
-        currentTurn:
-          prev.currentTurn && prev.currentTurn.turnNumber === payload.turnNumber
-            ? { ...prev.currentTurn, phase: 'resolved' }
-            : prev.currentTurn,
-      }));
+          points: payload.points,
+          createdAt: existingCard?.createdAt ?? Date.now(),
+        };
+        return {
+          ...prev,
+          players: payload.players,
+          lastResult: {
+            turnNumber: payload.turnNumber,
+            playerId: payload.playerId,
+            points: payload.points,
+            votes: payload.votes,
+          },
+          currentTurn:
+            prev.currentTurn && prev.currentTurn.turnNumber === payload.turnNumber
+              ? { ...prev.currentTurn, phase: 'resolved' }
+              : prev.currentTurn,
+          answerCards: [...prev.answerCards.filter((c) => c.turnNumber !== payload.turnNumber), resolvedCard],
+        };
+      });
     }
     function onGameEnded(payload) {
       setRoom((prev) => ({ ...prev, status: 'finished', ranking: payload.ranking, currentTurn: null }));
@@ -242,6 +304,10 @@ export function RoomProvider({ children }) {
 
   const sendChat = useCallback((text, clientId) => emitWithAck('chat:send', { text, clientId }), []);
 
+  // Toujours recalculé depuis la base (table turns) côté serveur : ne renvoie
+  // jamais de valeur en cache, on rappelle à chaque ouverture du panneau.
+  const fetchRecap = useCallback(() => emitWithAck('recap:fetch', {}), []);
+
   return (
     <RoomContext.Provider
       value={{
@@ -257,6 +323,7 @@ export function RoomProvider({ children }) {
         sendAnswer,
         sendVote,
         sendChat,
+        fetchRecap,
       }}
     >
       {children}

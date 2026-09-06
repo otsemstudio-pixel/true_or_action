@@ -23,6 +23,7 @@ export function buildSnapshot(entry) {
     settings: room.settings,
     niveauMax: room.niveauMax,
     langue: room.langue,
+    partieId: entry.dbPartieId ?? null,
     players: room.players,
     turnNumber: room.turnNumber,
     currentTurn,

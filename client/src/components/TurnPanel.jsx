@@ -12,18 +12,19 @@ function playerName(players, id) {
   return players.find((p) => p.id === id)?.pseudo ?? '…';
 }
 
-function TurnPanel({ turn, players, myId, onSubmitAnswer, onVote }) {
+// Ne gère plus que la phase de réponse : une fois la réponse envoyée, son
+// contenu et le vote qui lui est attaché vivent dans le bloc de réponse posté
+// dans le chat (voir AnswerCard / ChatPanel), pas ici en double.
+function TurnPanel({ turn, players, myId, onSubmitAnswer }) {
   const { t } = useI18n();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const [myVote, setMyVote] = useState(null);
 
   useEffect(() => {
     setText('');
     setBusy(false);
     setError(null);
-    setMyVote(null);
   }, [turn?.turnNumber]);
 
   if (!turn) {
@@ -36,12 +37,6 @@ function TurnPanel({ turn, players, myId, onSubmitAnswer, onVote }) {
 
   const isActive = turn.activePlayerId === myId;
   const activeName = playerName(players, turn.activePlayerId);
-  // Le joueur actif ne vote pas pour lui-même : à 2 joueurs il ne resterait
-  // qu'un seul votant, ce qui vide le vote de son sens. Le serveur saute déjà
-  // la phase de vote dans ce cas (elle ne devrait donc jamais être observée
-  // ici), mais on masque aussi l'UI de vote par sécurité si jamais elle l'était.
-  const activePlayersCount = players.filter((p) => p.status !== 'left').length;
-  const voteEnabled = activePlayersCount > 2;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -54,17 +49,6 @@ function TurnPanel({ turn, players, myId, onSubmitAnswer, onVote }) {
       setError(translateError(t, err));
     } finally {
       setBusy(false);
-    }
-  };
-
-  const handleVote = async (vote) => {
-    setError(null);
-    setMyVote(vote);
-    try {
-      await onVote(vote);
-    } catch (err) {
-      setMyVote(null);
-      setError(translateError(t, err));
     }
   };
 
@@ -82,61 +66,26 @@ function TurnPanel({ turn, players, myId, onSubmitAnswer, onVote }) {
 
       <ErrorBanner>{error}</ErrorBanner>
 
-      {turn.phase === 'answering' && (
-        <>
-          {isActive ? (
-            <form onSubmit={handleSubmit} className="turn-answer-form">
-              <textarea
-                className="answer-input"
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder={t('partie.ecrisTaReponse')}
-                rows={3}
-                autoFocus
-              />
-              <Button type="submit" block busy={busy} disabled={!text.trim()}>
-                {t('commun.envoyer')}
-              </Button>
-            </form>
-          ) : (
-            <p className="menu-item-hint">{t('partie.estEnTrainDeRepondre', { pseudo: activeName })}</p>
-          )}
-        </>
-      )}
+      {turn.phase === 'answering' &&
+        (isActive ? (
+          <form onSubmit={handleSubmit} className="turn-answer-form">
+            <textarea
+              className="answer-input"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={t('partie.ecrisTaReponse')}
+              rows={3}
+              autoFocus
+            />
+            <Button type="submit" block busy={busy} disabled={!text.trim()}>
+              {t('commun.envoyer')}
+            </Button>
+          </form>
+        ) : (
+          <p className="menu-item-hint">{t('partie.estEnTrainDeRepondre', { pseudo: activeName })}</p>
+        ))}
 
-      {turn.phase === 'voting' && (
-        <>
-          <p className="turn-answer-reveal">{t('partie.reponseGuillemet', { reponse: turn.answer })}</p>
-          {!voteEnabled ? (
-            <p className="menu-item-hint">{t('partie.tourEnResolution')}</p>
-          ) : isActive ? (
-            <p className="menu-item-hint">{t('partie.enAttenteDesVotes')}</p>
-          ) : myVote ? (
-            <p className="menu-item-hint">{t('partie.voteEnvoye')}</p>
-          ) : (
-            <div className="vote-buttons">
-              <button
-                type="button"
-                className="btn btn-secondary vote-btn"
-                onClick={() => handleVote('up')}
-                aria-label={t('partie.pouceHaut')}
-              >
-                👍
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost vote-btn"
-                onClick={() => handleVote('down')}
-                aria-label={t('partie.pouceBas')}
-              >
-                👎
-              </button>
-            </div>
-          )}
-        </>
-      )}
-
-      {turn.phase === 'resolved' && <p className="menu-item-hint">{t('partie.tourTermine')}</p>}
+      {turn.phase === 'voting' && <p className="menu-item-hint">{t('partie.reponseDansLeChat')}</p>}
     </div>
   );
 }

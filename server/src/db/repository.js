@@ -176,6 +176,28 @@ export async function fetchUsedQuestionIds(db, partieId) {
   return res.rows.map((r) => r.question_id);
 }
 
+// Récapitulatif : reconstruit exclusivement depuis turns/questions/users,
+// jamais depuis l'historique du chat en mémoire — c'est la source de vérité
+// même après un redémarrage serveur ou une reconnexion.
+export async function fetchTurnsRecap(db, partieId) {
+  const res = await db.query(
+    `SELECT t.id, t.numero, t.player_id, u.pseudo, q.type, q.contenu, t.reponse, t.points, t.status
+     FROM turns t
+     JOIN users u ON u.id = t.player_id
+     LEFT JOIN questions q ON q.id = t.question_id
+     WHERE t.partie_id = $1 AND t.status IN ('done', 'timeout')
+     ORDER BY t.numero ASC`,
+    [partieId]
+  );
+  return res.rows;
+}
+
+export async function fetchVotesForTurns(db, turnIds) {
+  if (turnIds.length === 0) return [];
+  const res = await db.query('SELECT turn_id, valeur FROM votes WHERE turn_id = ANY($1)', [turnIds]);
+  return res.rows;
+}
+
 // --- votes ---
 
 export async function insertVote(db, turnId, voterId, vote) {

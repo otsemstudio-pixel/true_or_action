@@ -5,6 +5,7 @@ import { useI18n } from '../hooks/useI18n.jsx';
 import { translateError } from '../i18n/index.js';
 import Button from '../components/Button.jsx';
 import ErrorBanner from '../components/ErrorBanner.jsx';
+import RecapPanel from '../components/RecapPanel.jsx';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
@@ -17,6 +18,7 @@ function FinScreen() {
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [recapOpen, setRecapOpen] = useState(false);
 
   const ranking = room.ranking ?? [];
 
@@ -57,6 +59,10 @@ function FinScreen() {
         {ranking.length === 0 && <p className="menu-item-hint">{t('fin.classementIndisponible')}</p>}
       </ol>
 
+      <Button variant="ghost" block onClick={() => setRecapOpen(true)}>
+        {t('partie.recapitulatif')}
+      </Button>
+
       {isHost ? (
         <Button block busy={busy} onClick={handleRestart}>
           {t('fin.rejouer')}
@@ -68,6 +74,8 @@ function FinScreen() {
       <Button variant="danger-ghost" onClick={leaveRoom}>
         {t('commun.quitter')}
       </Button>
+
+      <RecapPanel open={recapOpen} onClose={() => setRecapOpen(false)} />
     </div>
   );
 }

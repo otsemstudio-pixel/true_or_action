@@ -10,6 +10,8 @@ export default {
     quitter: 'Quitter',
     hote: 'Hôte',
     secondesRestantes: '{{count}}s',
+    pointsGagnes: '+{{points}}',
+    fermer: 'Fermer',
   },
 
   accueil: {
@@ -93,6 +95,10 @@ export default {
       other: '{{pseudo}} gagne {{points}} points',
     },
     reponseGuillemet: '« {{reponse}} »',
+    reponseDansLeChat: 'Réponse envoyée, votez dans le chat ci-dessous.',
+    tempsEcoule: 'Temps écoulé, aucune réponse.',
+    recapitulatif: 'Récapitulatif',
+    recapVide: 'Aucun tour joué pour le moment.',
   },
 
   chat: {
