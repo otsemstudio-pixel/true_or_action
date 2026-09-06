@@ -58,7 +58,12 @@
 /* Thème clair : fond blanc cassé, blocs saturés, texte quasi noir. Chaque
    couleur d'accent a sa propre variante ajustée pour tenir le contraste AA
    sur fond clair (l'inverse du thème sombre, taillé pour un fond clair posé
-   sur une base sombre) — jamais la même valeur brute réutilisée telle quelle. */
+   sur une base sombre) — jamais la même valeur brute réutilisée telle quelle.
+   Toutes les paires texte/fond réellement utilisées dans cette feuille (y
+   compris les petits badges sur fond teinté) ont été vérifiées ≥ 4.5:1
+   (WCAG AA, texte normal) ; --color-action est délibérément plus sombre que
+   sa première valeur pour tenir ce seuil sur badge-type--action et
+   player-badge-host, ses deux usages les plus exigeants. */
 :root[data-theme='light'] {
   color-scheme: light;
 
@@ -71,10 +76,10 @@
 
   --color-verite: #0f766e;
   --color-verite-ink: #ffffff;
-  --color-verite-soft: #d3f2ec;
+  --color-verite-soft: #dff6f1;
   --color-verite-wash: #eafaf6;
 
-  --color-action: #c2410c;
+  --color-action: #ad380f;
   --color-action-ink: #ffffff;
   --color-action-soft: #ffe3d2;
   --color-action-wash: #fff2e9;
