@@ -19,30 +19,34 @@ function PartieScreen() {
 
   return (
     <div className="screen partie-screen">
-      <ScoreBoard players={room.players} activePlayerId={room.currentTurn?.activePlayerId} />
+      <div className="partie-main">
+        <ScoreBoard players={room.players} activePlayerId={room.currentTurn?.activePlayerId} />
 
-      <div className="partie-toolbar">
-        <p className="niveau-indicator">{t(`niveau.label.${room.niveauMax}`)}</p>
-        <Button variant="ghost" onClick={() => setRecapOpen(true)}>
-          {t('partie.recapitulatif')}
-        </Button>
+        <div className="partie-toolbar">
+          <p className="niveau-indicator">{t(`niveau.label.${room.niveauMax}`)}</p>
+          <Button variant="ghost" onClick={() => setRecapOpen(true)}>
+            {t('partie.recapitulatif')}
+          </Button>
+        </div>
+
+        <ResultToast result={room.lastResult} players={room.players} />
+
+        <Wheel type={room.currentTurn?.type} turnNumber={room.currentTurn?.turnNumber} />
+
+        <TurnPanel turn={room.currentTurn} players={room.players} myId={myId} onSubmitAnswer={sendAnswer} />
       </div>
 
-      <ResultToast result={room.lastResult} players={room.players} />
-
-      <Wheel type={room.currentTurn?.type} turnNumber={room.currentTurn?.turnNumber} />
-
-      <TurnPanel turn={room.currentTurn} players={room.players} myId={myId} onSubmitAnswer={sendAnswer} />
-
-      <ChatPanel
-        messages={room.messages}
-        answerCards={room.answerCards}
-        players={room.players}
-        myId={myId}
-        currentTurn={room.currentTurn}
-        onSend={sendChat}
-        onVote={sendVote}
-      />
+      <div className="partie-chat-col">
+        <ChatPanel
+          messages={room.messages}
+          answerCards={room.answerCards}
+          players={room.players}
+          myId={myId}
+          currentTurn={room.currentTurn}
+          onSend={sendChat}
+          onVote={sendVote}
+        />
+      </div>
 
       <RecapPanel open={recapOpen} onClose={() => setRecapOpen(false)} />
     </div>

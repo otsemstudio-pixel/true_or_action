@@ -499,6 +499,43 @@ input {
   padding-top: var(--space-6);
 }
 
+.partie-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Au-delà de 900px : jeu à gauche, chat en colonne fixe à droite qui scrolle
+   indépendamment. En dessous, ces deux blocs s'empilent simplement (mise en
+   page mobile inchangée). */
+@media (min-width: 900px) {
+  .partie-screen {
+    max-width: 1080px;
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    align-items: start;
+    gap: var(--space-6);
+  }
+
+  .partie-chat-col {
+    position: sticky;
+    top: var(--space-6);
+    height: calc(100vh - var(--space-6) * 2);
+    display: flex;
+  }
+
+  .partie-chat-col .chat-panel {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .partie-chat-col .chat-list {
+    flex: 1;
+    max-height: none;
+  }
+}
+
 .niveau-indicator {
   text-align: center;
   font-size: var(--text-xs);
