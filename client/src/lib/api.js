@@ -82,3 +82,65 @@ export function updateTheme(token, theme) {
     body: JSON.stringify({ theme }),
   });
 }
+
+export function fetchMyQuestions(token) {
+  return request('/api/questions/mine', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export function proposeQuestion(token, { type, contenu, niveau, packId }) {
+  return request('/api/questions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ type, contenu, niveau, packId }),
+  });
+}
+
+export function updateQuestion(token, id, { type, contenu, niveau }) {
+  return request(`/api/questions/${id}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ type, contenu, niveau }),
+  });
+}
+
+export function withdrawQuestion(token, id) {
+  return request(`/api/questions/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export function fetchPendingQuestions(token) {
+  return request('/api/admin/questions/en-attente', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export function approvePendingQuestion(token, id) {
+  return request(`/api/admin/questions/${id}/approve`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export function rejectPendingQuestion(token, id) {
+  return request(`/api/admin/questions/${id}/reject`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export function fetchReportedQuestions(token) {
+  return request('/api/admin/questions/signalees', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export function unpublishQuestion(token, id) {
+  return request(`/api/admin/questions/${id}/unpublish`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}

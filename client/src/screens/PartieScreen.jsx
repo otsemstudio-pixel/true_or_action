@@ -32,6 +32,7 @@ function PartieScreen() {
     judgeBet,
     sendSurpriseAnswer,
     sendSurpriseVote,
+    signalerQuestion,
   } = useRoom();
   const { t } = useI18n();
   const myId = String(user.id);
@@ -64,6 +65,7 @@ function PartieScreen() {
             answerSec={room.answerSec}
             onSubmitAnswer={sendSurpriseAnswer}
             onVote={sendSurpriseVote}
+            onSignalerQuestion={signalerQuestion}
           />
         ) : (
           <>
@@ -81,6 +83,7 @@ function PartieScreen() {
               onActivateJoker={activateJoker}
               onDeclareBluff={declareBluff}
               onJudgeBet={judgeBet}
+              onSignalerQuestion={signalerQuestion}
             />
             {room.regles.pariMutuel && (
               <PariMutuelPanel turn={room.currentTurn} players={room.players} myId={myId} onSendBet={sendBet} />

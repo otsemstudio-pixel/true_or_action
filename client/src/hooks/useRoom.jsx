@@ -582,6 +582,9 @@ export function RoomProvider({ children }) {
   const sendSurpriseAnswer = useCallback((text) => emitWithAck('turn:surpriseAnswer', { text }), []);
   const sendSurpriseVote = useCallback((targetId) => emitWithAck('turn:surpriseVote', { targetId }), []);
 
+  // ---------- Signalement d'une question ----------
+  const signalerQuestion = useCallback(() => emitWithAck('turn:signalerQuestion', {}), []);
+
   return (
     <RoomContext.Provider
       value={{
@@ -613,6 +616,7 @@ export function RoomProvider({ children }) {
         judgeBet,
         sendSurpriseAnswer,
         sendSurpriseVote,
+        signalerQuestion,
       }}
     >
       {children}

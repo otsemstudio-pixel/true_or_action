@@ -8,6 +8,15 @@ import {
   playAsGuest as apiPlayAsGuest,
   resumeGuest as apiResumeGuest,
   convertGuest as apiConvertGuest,
+  fetchMyQuestions as apiFetchMyQuestions,
+  proposeQuestion as apiProposeQuestion,
+  updateQuestion as apiUpdateQuestion,
+  withdrawQuestion as apiWithdrawQuestion,
+  fetchPendingQuestions as apiFetchPendingQuestions,
+  approvePendingQuestion as apiApprovePendingQuestion,
+  rejectPendingQuestion as apiRejectPendingQuestion,
+  fetchReportedQuestions as apiFetchReportedQuestions,
+  unpublishQuestion as apiUnpublishQuestion,
 } from '../lib/api.js';
 import { connectSocket, disconnectSocket } from '../lib/socket.js';
 import { useI18n } from './useI18n.jsx';
@@ -133,6 +142,75 @@ export function AuthProvider({ children }) {
     [applySession]
   );
 
+  // "Gérer mes questions" : mêmes garde-fous que convertToFullAccount
+  // (jeton requis), le serveur applique en plus ses propres règles
+  // (compte complet, propriété, statut en_attente pour modifier/retirer).
+  const fetchMyQuestions = useCallback(() => {
+    if (!tokenRef.current) {
+      throw Object.assign(new Error('Non connecté'), { code: 'UNAUTHORIZED' });
+    }
+    return apiFetchMyQuestions(tokenRef.current);
+  }, []);
+
+  const proposeQuestion = useCallback((payload) => {
+    if (!tokenRef.current) {
+      throw Object.assign(new Error('Non connecté'), { code: 'UNAUTHORIZED' });
+    }
+    return apiProposeQuestion(tokenRef.current, payload);
+  }, []);
+
+  const updateQuestion = useCallback((id, payload) => {
+    if (!tokenRef.current) {
+      throw Object.assign(new Error('Non connecté'), { code: 'UNAUTHORIZED' });
+    }
+    return apiUpdateQuestion(tokenRef.current, id, payload);
+  }, []);
+
+  const withdrawQuestion = useCallback((id) => {
+    if (!tokenRef.current) {
+      throw Object.assign(new Error('Non connecté'), { code: 'UNAUTHORIZED' });
+    }
+    return apiWithdrawQuestion(tokenRef.current, id);
+  }, []);
+
+  // Modération (admin) : mêmes garde-fous, le serveur revérifie de toute
+  // façon users.is_admin en base à chaque appel (voir requireAdmin) — ceci
+  // ne fait que refuser tôt si aucune session n'est active.
+  const fetchPendingQuestions = useCallback(() => {
+    if (!tokenRef.current) {
+      throw Object.assign(new Error('Non connecté'), { code: 'UNAUTHORIZED' });
+    }
+    return apiFetchPendingQuestions(tokenRef.current);
+  }, []);
+
+  const approvePendingQuestion = useCallback((id) => {
+    if (!tokenRef.current) {
+      throw Object.assign(new Error('Non connecté'), { code: 'UNAUTHORIZED' });
+    }
+    return apiApprovePendingQuestion(tokenRef.current, id);
+  }, []);
+
+  const rejectPendingQuestion = useCallback((id) => {
+    if (!tokenRef.current) {
+      throw Object.assign(new Error('Non connecté'), { code: 'UNAUTHORIZED' });
+    }
+    return apiRejectPendingQuestion(tokenRef.current, id);
+  }, []);
+
+  const fetchReportedQuestions = useCallback(() => {
+    if (!tokenRef.current) {
+      throw Object.assign(new Error('Non connecté'), { code: 'UNAUTHORIZED' });
+    }
+    return apiFetchReportedQuestions(tokenRef.current);
+  }, []);
+
+  const unpublishQuestion = useCallback((id) => {
+    if (!tokenRef.current) {
+      throw Object.assign(new Error('Non connecté'), { code: 'UNAUTHORIZED' });
+    }
+    return apiUnpublishQuestion(tokenRef.current, id);
+  }, []);
+
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(GUEST_TOKEN_KEY);
@@ -173,7 +251,26 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, status, register, login, playAsGuest, convertToFullAccount, logout, changeLangue, changeTheme }}
+      value={{
+        user,
+        status,
+        register,
+        login,
+        playAsGuest,
+        convertToFullAccount,
+        logout,
+        changeLangue,
+        changeTheme,
+        fetchMyQuestions,
+        proposeQuestion,
+        updateQuestion,
+        withdrawQuestion,
+        fetchPendingQuestions,
+        approvePendingQuestion,
+        rejectPendingQuestion,
+        fetchReportedQuestions,
+        unpublishQuestion,
+      }}
     >
       {children}
     </AuthContext.Provider>

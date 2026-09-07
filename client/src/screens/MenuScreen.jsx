@@ -10,6 +10,8 @@ import LangueSelector from '../components/LangueSelector.jsx';
 import ThemeSelector from '../components/ThemeSelector.jsx';
 import Tutoriel from '../components/Tutoriel.jsx';
 import ConvertirCompteModal from '../components/ConvertirCompteModal.jsx';
+import MesQuestionsModal from '../components/MesQuestionsModal.jsx';
+import AdminModerationModal from '../components/AdminModerationModal.jsx';
 import { hasTutorielSeen, shouldShowNouveautes, markTutorielSeen } from '../lib/tutoriel.js';
 
 const DEFAULT_MAX_TURNS = 10;
@@ -24,6 +26,8 @@ function MenuScreen() {
   const [tutorielOpen, setTutorielOpen] = useState(false);
   const [tutorielView, setTutorielView] = useState('full');
   const [convertOpen, setConvertOpen] = useState(false);
+  const [mesQuestionsOpen, setMesQuestionsOpen] = useState(false);
+  const [moderationOpen, setModerationOpen] = useState(false);
 
   // Proposé automatiquement une seule fois avant la première partie (vue
   // complète), puis reproposé sous forme de "Nouveautés" si des sections ont
@@ -129,14 +133,23 @@ function MenuScreen() {
       </form>
 
       <div className="menu-block menu-block--muted">
-        <Button variant="ghost" block disabled>
+        <Button variant="ghost" block onClick={() => setMesQuestionsOpen(true)}>
           {t('menu.gererMesQuestions')}
         </Button>
-        <p className="menu-block-hint">{t('menu.bientotDisponible')}</p>
       </div>
+
+      {user.isAdmin && (
+        <div className="menu-block menu-block--muted">
+          <Button variant="ghost" block onClick={() => setModerationOpen(true)}>
+            {t('moderation.titre')}
+          </Button>
+        </div>
+      )}
 
       <Tutoriel open={tutorielOpen} initialView={tutorielView} onClose={closeTutoriel} />
       <ConvertirCompteModal open={convertOpen} onClose={() => setConvertOpen(false)} />
+      <MesQuestionsModal open={mesQuestionsOpen} onClose={() => setMesQuestionsOpen(false)} />
+      {user.isAdmin && <AdminModerationModal open={moderationOpen} onClose={() => setModerationOpen(false)} />}
     </div>
   );
 }

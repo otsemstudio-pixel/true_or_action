@@ -16,17 +16,28 @@ function playerName(players, id) {
 // qu'une variante de TurnPanel — la forme des données (plusieurs répondants,
 // vote par cible plutôt que pouce haut/bas) est trop différente pour partager
 // le même composant sans le complexifier inutilement.
-function SurpriseTurnPanel({ turn, players, myId, answerSec, onSubmitAnswer, onVote }) {
+function SurpriseTurnPanel({ turn, players, myId, answerSec, onSubmitAnswer, onVote, onSignalerQuestion }) {
   const { t } = useI18n();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [signaledLocally, setSignaledLocally] = useState(false);
 
   useEffect(() => {
     setText('');
     setBusy(false);
     setError(null);
+    setSignaledLocally(false);
   }, [turn?.turnNumber, turn?.phase]);
+
+  const handleSignaler = async () => {
+    try {
+      await onSignalerQuestion();
+      setSignaledLocally(true);
+    } catch {
+      // best-effort, voir TurnPanel.jsx pour le même choix
+    }
+  };
 
   const hasAnswered = turn.answeredPlayerIds?.includes(myId);
   const hasVoted = Boolean(turn.votes?.[myId]);
@@ -66,6 +77,13 @@ function SurpriseTurnPanel({ turn, players, myId, answerSec, onSubmitAnswer, onV
       </div>
 
       <p className="turn-question">{turn.contenu}</p>
+      {signaledLocally ? (
+        <p className="menu-item-hint">{t('partie.questionSignalee')}</p>
+      ) : (
+        <button type="button" className="link-btn" onClick={handleSignaler}>
+          {t('partie.signalerQuestion')}
+        </button>
+      )}
       <ErrorBanner>{error}</ErrorBanner>
 
       {turn.phase === 'answering' &&

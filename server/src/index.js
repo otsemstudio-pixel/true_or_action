@@ -6,6 +6,8 @@ import { env } from './config/env.js';
 import { pool } from './db/pool.js';
 import { registerSocketHandlers, reloadActiveRooms } from './sockets/index.js';
 import authRouter from './routes/auth.js';
+import questionsRouter from './routes/questions.js';
+import adminRouter from './routes/admin.js';
 import { deleteInactiveGuests } from './auth/repository.js';
 
 // Filet de dernier recours : sans lui, la moindre promesse rejetée sans
@@ -44,10 +46,18 @@ app.get('/health', async (req, res) => {
 });
 
 app.use('/api/auth', authRouter);
+app.use('/api/questions', questionsRouter);
+app.use('/api/admin', adminRouter);
 
 app.use((err, req, res, next) => {
   if (err.name === 'AuthError') {
     return res.status(err.status || 400).json({ code: err.code, message: err.message, details: err.details });
+  }
+  // ContentError (voir content/errors.js) ne porte pas de statut HTTP : ce
+  // sont toujours des refus de contenu proposé par l'utilisateur, donc
+  // toujours 400 ici.
+  if (err.name === 'ContentError') {
+    return res.status(400).json({ code: err.code, message: err.message, details: err.details });
   }
   console.error('Erreur HTTP inattendue:', err.code || err.name || 'erreur inconnue');
   res.status(500).json({ code: 'INTERNAL_ERROR', message: 'Erreur interne' });

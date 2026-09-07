@@ -1043,6 +1043,29 @@ export function registerSocketHandlers(io) {
       }
     });
 
+    // ---------- Signalement d'une question ----------
+    // Ni runExclusive ni effet/diffusion : contrairement aux actions
+    // ci-dessus, ceci ne touche jamais entry.room (aucun état de partie ne
+    // change) — un simple enregistrement indépendant, en dehors de toute
+    // course sur l'état partagé du salon.
+    socket.on('turn:signalerQuestion', async (_, ack) => {
+      try {
+        const entry = requireEntry(socket);
+        const questionId = entry.room.currentTurn?.questionId;
+        if (questionId == null) {
+          throw new GameError('NO_QUESTION_TO_REPORT', 'Aucune question à signaler pour le moment');
+        }
+        await repo.insertSignalement(pool, {
+          questionId,
+          userId: Number(socket.data.playerId),
+          roomId: entry.dbRoomId,
+        });
+        ack?.({ ok: true });
+      } catch (err) {
+        ack?.(errorResponse(err));
+      }
+    });
+
     socket.on('recap:fetch', async (_, ack) => {
       try {
         const entry = requireEntry(socket);

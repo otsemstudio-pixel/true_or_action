@@ -529,3 +529,17 @@ export async function fetchQuestionById(db, questionId) {
   const res = await db.query('SELECT id, type, contenu FROM questions WHERE id = $1', [questionId]);
   return res.rows[0] ?? null;
 }
+
+// --- signalements ---
+
+// Un joueur ne peut signaler une même question qu'une seule fois (contrainte
+// unique question_id+user_id en base) : DO NOTHING plutôt qu'une erreur, une
+// deuxième tentative n'apprend rien de plus à l'admin et ne doit jamais
+// bloquer le joueur qui double-clique.
+export async function insertSignalement(db, { questionId, userId, roomId }) {
+  await db.query(
+    `INSERT INTO signalements (question_id, user_id, room_id) VALUES ($1, $2, $3)
+     ON CONFLICT (question_id, user_id) DO NOTHING`,
+    [questionId, userId, roomId]
+  );
+}

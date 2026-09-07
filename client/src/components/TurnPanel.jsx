@@ -33,6 +33,7 @@ function TurnPanel({
   onJudgeBet,
   onActivateJoker,
   onDeclareBluff,
+  onSignalerQuestion,
 }) {
   const { t } = useI18n();
   const [text, setText] = useState('');
@@ -44,13 +45,19 @@ function TurnPanel({
   // déjà turn.bluffDeclared pour le joueur actif spécifiquement (jamais pour
   // les autres, voir snapshot.js).
   const [bluffDeclaredLocally, setBluffDeclaredLocally] = useState(false);
+  // Suivi en local, comme bluffDeclaredLocally ci-dessus : le signalement ne
+  // diffuse rien non plus, seul l'ack confirme la prise en compte. Réinitialisé
+  // sur un changement de contenu (pas seulement de tour) car la question
+  // affichée peut changer en cours de tour (retournée, joker inversé).
+  const [signaledLocally, setSignaledLocally] = useState(false);
 
   useEffect(() => {
     setText('');
     setBusy(false);
     setError(null);
     setBluffDeclaredLocally(Boolean(turn?.bluffDeclared));
-  }, [turn?.turnNumber, turn?.phase]);
+    setSignaledLocally(false);
+  }, [turn?.turnNumber, turn?.phase, turn?.contenu]);
 
   if (!turn) {
     return (
@@ -95,6 +102,17 @@ function TurnPanel({
       }
     } finally {
       setBusy(false);
+    }
+  };
+
+  // Best-effort et silencieux : un aléa réseau ici ne doit jamais interrompre
+  // la partie, le bouton reste simplement cliquable pour réessayer.
+  const handleSignaler = async () => {
+    try {
+      await onSignalerQuestion();
+      setSignaledLocally(true);
+    } catch {
+      // ignoré volontairement, voir commentaire ci-dessus
     }
   };
 
@@ -192,6 +210,14 @@ function TurnPanel({
       </div>
 
       <p className="turn-question">{turn.contenu ?? t('partie.questionIndisponible')}</p>
+      {turn.contenu &&
+        (signaledLocally ? (
+          <p className="menu-item-hint">{t('partie.questionSignalee')}</p>
+        ) : (
+          <button type="button" className="link-btn" onClick={handleSignaler}>
+            {t('partie.signalerQuestion')}
+          </button>
+        ))}
       {turn.returned && (
         <p className="menu-item-hint">{t('partie.questionRetourneeMessage', { pseudo: activeName })}</p>
       )}

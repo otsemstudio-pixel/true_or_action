@@ -2,14 +2,14 @@ import { pool } from '../db/pool.js';
 
 export async function findUserByEmail(email) {
   const res = await pool.query(
-    'SELECT id, pseudo, email, password_hash, langue, theme FROM users WHERE email = $1',
+    'SELECT id, pseudo, email, password_hash, langue, theme, is_admin FROM users WHERE email = $1',
     [email]
   );
   return res.rows[0] ?? null;
 }
 
 export async function findUserById(id) {
-  const res = await pool.query('SELECT id, pseudo, langue, theme, is_guest FROM users WHERE id = $1', [id]);
+  const res = await pool.query('SELECT id, pseudo, langue, theme, is_guest, is_admin FROM users WHERE id = $1', [id]);
   return res.rows[0] ?? null;
 }
 
@@ -35,7 +35,7 @@ export async function createGuestUser({ pseudo, guestToken, langue, theme }) {
 
 export async function findUserByGuestToken(guestToken) {
   const res = await pool.query(
-    'SELECT id, pseudo, langue, theme, is_guest FROM users WHERE guest_token = $1 AND is_guest = true',
+    'SELECT id, pseudo, langue, theme, is_guest, is_admin FROM users WHERE guest_token = $1 AND is_guest = true',
     [guestToken]
   );
   return res.rows[0] ?? null;
@@ -52,7 +52,7 @@ export async function convertGuestToFullAccount(id, { email, passwordHash }) {
   const res = await pool.query(
     `UPDATE users SET email = $1, password_hash = $2, is_guest = false, guest_token = NULL
      WHERE id = $3
-     RETURNING id, pseudo, email, langue, theme, is_guest`,
+     RETURNING id, pseudo, email, langue, theme, is_guest, is_admin`,
     [email, passwordHash, id]
   );
   return res.rows[0];

@@ -54,7 +54,10 @@ router.post('/register', async (req, res, next) => {
     const token = signToken(user);
     res.status(201).json({
       token,
-      user: { id: user.id, pseudo: user.pseudo, langue: user.langue, theme: user.theme, isGuest: false },
+      // Un compte tout juste créé ne peut jamais être admin (colonne à false
+      // par défaut, aucun mécanisme d'auto-attribution) : pas besoin de
+      // relire la colonne, contrairement à login/me où le compte préexiste.
+      user: { id: user.id, pseudo: user.pseudo, langue: user.langue, theme: user.theme, isGuest: false, isAdmin: false },
     });
   } catch (err) {
     next(err);
@@ -86,7 +89,14 @@ router.post('/convert', requireAuth, async (req, res, next) => {
     const token = signToken(user);
     res.json({
       token,
-      user: { id: user.id, pseudo: user.pseudo, langue: user.langue, theme: user.theme, isGuest: false },
+      user: {
+        id: user.id,
+        pseudo: user.pseudo,
+        langue: user.langue,
+        theme: user.theme,
+        isGuest: false,
+        isAdmin: user.is_admin,
+      },
     });
   } catch (err) {
     next(err);
@@ -114,7 +124,14 @@ router.post('/login', async (req, res, next) => {
     const token = signToken(user);
     res.json({
       token,
-      user: { id: user.id, pseudo: user.pseudo, langue: user.langue, theme: user.theme, isGuest: false },
+      user: {
+        id: user.id,
+        pseudo: user.pseudo,
+        langue: user.langue,
+        theme: user.theme,
+        isGuest: false,
+        isAdmin: user.is_admin,
+      },
     });
   } catch (err) {
     next(err);
@@ -150,7 +167,7 @@ router.post('/guest', async (req, res, next) => {
     res.status(201).json({
       token,
       guestToken,
-      user: { id: user.id, pseudo: user.pseudo, langue: user.langue, theme: user.theme, isGuest: true },
+      user: { id: user.id, pseudo: user.pseudo, langue: user.langue, theme: user.theme, isGuest: true, isAdmin: false },
     });
   } catch (err) {
     next(err);
@@ -175,7 +192,14 @@ router.post('/guest/resume', async (req, res, next) => {
     const token = signToken(user);
     res.json({
       token,
-      user: { id: user.id, pseudo: user.pseudo, langue: user.langue, theme: user.theme, isGuest: true },
+      user: {
+        id: user.id,
+        pseudo: user.pseudo,
+        langue: user.langue,
+        theme: user.theme,
+        isGuest: true,
+        isAdmin: user.is_admin,
+      },
     });
   } catch (err) {
     next(err);
@@ -193,7 +217,14 @@ router.get('/me', requireAuth, async (req, res, next) => {
       throw new AuthError('UNAUTHORIZED', 'Utilisateur introuvable', 401);
     }
     res.json({
-      user: { id: user.id, pseudo: user.pseudo, langue: user.langue, theme: user.theme, isGuest: user.is_guest },
+      user: {
+        id: user.id,
+        pseudo: user.pseudo,
+        langue: user.langue,
+        theme: user.theme,
+        isGuest: user.is_guest,
+        isAdmin: user.is_admin,
+      },
     });
   } catch (err) {
     next(err);
