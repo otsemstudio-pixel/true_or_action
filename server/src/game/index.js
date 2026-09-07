@@ -41,5 +41,8 @@ export {
   surpriseAnswerTimeout,
   submitSurpriseVote,
   surpriseVoteTimeout,
+  activateJokerPublic,
+  declareBluff,
+  submitBluffMise,
 } from './turn.js';
 export { validateMessageText, isWithinRateLimit } from './chat.js';

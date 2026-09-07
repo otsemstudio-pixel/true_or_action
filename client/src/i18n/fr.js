@@ -112,6 +112,35 @@ export default {
       nom: 'Le pari mutuel (2 joueurs)',
       description: "À deux, l'autre parie sur votre réponse avant de l'entendre — vu juste rapporte 2 points.",
     },
+    jokerPublic: {
+      nom: 'Le joker du public',
+      description:
+        "Une fois par partie, n'importe qui peut imposer une contrainte surprise (chuchoter, rimer...) au joueur dont c'est le tour, avant sa réponse.",
+      contraintes: {
+        phrase: 'Réponds en une seule phrase',
+        chuchote: 'Réponds en chuchotant',
+        rime: 'Réponds en rimant',
+        yeuxFermes: 'Réponds les yeux fermés',
+        troisiemePersonne: 'Réponds en parlant de toi à la troisième personne',
+        sansJe: 'Réponds sans jamais dire « je »',
+        chante: 'Réponds en chantant',
+      },
+    },
+    jokerInverse: {
+      nom: 'Le joker inversé',
+      description:
+        "Variante du joker du public (le même joker, pas un second) : au lieu d'une contrainte de style, force le joueur actif à répondre à la question du tour précédent.",
+    },
+    bluffAssume: {
+      nom: 'Le bluff assumé',
+      description:
+        "Après avoir répondu, le joueur actif peut avouer en secret qu'il a menti. Les autres devinent à l'aveugle s'il était sincère et peuvent miser 1 ou 2 points sur leur intuition — tout se révèle une fois le tour terminé.",
+    },
+    bluffSurprise: {
+      nom: 'Le bluff surprise',
+      description:
+        "Variante du bluff assumé (environ un tour sur cinq, comme le tour surprise) : le jeu décide seul, par tirage, si le joueur actif a menti — lui non plus ne le sait pas à l'avance.",
+    },
   },
 
   niveau: {
@@ -170,6 +199,22 @@ export default {
     // Règle C : la question retournée
     retournerLaQuestion: 'Retourner la question',
     questionRetourneeMessage: 'Question retournée à {{pseudo}}',
+
+    // Règle F : le joker du public
+    activerJoker: 'Activer le joker du public',
+    activerJokerStyle: 'Contrainte de style surprise',
+    activerJokerInverse: 'Question du tour précédent',
+    jokerInverseMessage: 'Question recyclée du tour précédent (joker inversé)',
+
+    // Règle G : le bluff assumé
+    declarerBluff: "Avouer que j'ai menti",
+    miseTitre: 'A-t-il/elle été sincère ?',
+    miseVrai: 'Sincère',
+    miseFaux: 'A menti',
+    miseMontant: '{{montant}} pt',
+    miseEnvoyer: 'Miser en secret',
+    miseEnvoyee: 'Mise envoyée — résultat au prochain tour',
+    bluffRevele: '{{pseudo}} avait menti !',
 
     // Règle D : le tour surprise
     tourSurpriseTitre: 'Tour surprise !',
@@ -307,6 +352,13 @@ export default {
     REGLE_DISABLED: "Cette règle n'est pas activée dans ce salon.",
     INVALID_REGLE: 'Règle invalide.',
     QUESTION_RETOURNEE_INDISPONIBLE: "Impossible de retourner la question sur ce tour.",
+    JOKER_DEJA_UTILISE: 'Vous avez déjà utilisé votre joker cette partie.',
+    JOKER_INVERSE_INDISPONIBLE: 'Aucun tour précédent à réutiliser pour le moment.',
+    INVALID_JOKER_EFFECT: 'Effet de joker invalide.',
+    BLUFF_DEJA_DECLARE: 'Le bluff a déjà été déclaré pour ce tour.',
+    CANNOT_MISE_SELF: 'Vous ne pouvez pas miser sur vous-même.',
+    ALREADY_MISE: 'Vous avez déjà misé pour ce tour.',
+    INVALID_MISE: 'Mise invalide.',
     PARI_MUTUEL_INDISPONIBLE: 'Le pari mutuel est indisponible ici.',
     SURPRISE_VOTE_INVALID: 'Ce joueur ne peut pas recevoir de vote.',
     ALREADY_ANSWERED: 'Vous avez déjà répondu.',

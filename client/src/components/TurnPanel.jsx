@@ -31,16 +31,25 @@ function TurnPanel({
   onRespondNiveauChoice,
   onReturnQuestion,
   onJudgeBet,
+  onActivateJoker,
+  onDeclareBluff,
 }) {
   const { t } = useI18n();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  // Suivi en local plutôt que via room.currentTurn : declareBluff ne diffuse
+  // jamais rien (voir handlers.js), le seul signal de succès est l'ack de
+  // cet appel — sauf juste après une reconnexion, où le snapshot renseigne
+  // déjà turn.bluffDeclared pour le joueur actif spécifiquement (jamais pour
+  // les autres, voir snapshot.js).
+  const [bluffDeclaredLocally, setBluffDeclaredLocally] = useState(false);
 
   useEffect(() => {
     setText('');
     setBusy(false);
     setError(null);
+    setBluffDeclaredLocally(Boolean(turn?.bluffDeclared));
   }, [turn?.turnNumber, turn?.phase]);
 
   if (!turn) {
@@ -139,6 +148,13 @@ function TurnPanel({
   const canPass = regles?.refusCouteux && isActive && turn.phase === 'answering';
   const canReturn =
     regles?.questionRetournee && isActive && turn.phase === 'answering' && !turn.doubleOuRien && !turn.returned;
+  // Règle F : n'importe quel joueur (actif compris) peut l'activer, tant que
+  // personne ne l'a fait avant lui sur ce tour — pas réservé au joueur actif,
+  // contrairement au refus et à la question retournée ci-dessus.
+  const canJoker = regles?.jokerPublic && turn.phase === 'answering' && !turn.jokerConstraint && !turn.jokerInverse;
+  // Indice côté client seulement (le serveur reste l'autorité) : au premier
+  // tour de la partie, il n'existe encore aucun tour précédent à recycler.
+  const canJokerInverse = canJoker && regles?.jokerInverse && turn.turnNumber > 1;
 
   return (
     <div className={`turn-panel turn-panel--${turn.type}`}>
@@ -156,45 +172,105 @@ function TurnPanel({
       {turn.returned && (
         <p className="menu-item-hint">{t('partie.questionRetourneeMessage', { pseudo: activeName })}</p>
       )}
+      {turn.jokerConstraint && (
+        <p className="regle-badge">{t(`regles.jokerPublic.contraintes.${turn.jokerConstraint}`)}</p>
+      )}
+      {turn.jokerInverse && <p className="regle-badge">{t('partie.jokerInverseMessage')}</p>}
 
       <ErrorBanner>{error}</ErrorBanner>
 
-      {turn.phase === 'answering' &&
-        (isActive ? (
-          <>
-            <form onSubmit={handleSubmit} className="turn-answer-form">
-              <textarea
-                className="answer-input"
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder={t('partie.ecrisTaReponse')}
-                rows={3}
-                autoFocus
-              />
-              <Button type="submit" variant="dark" block arrow busy={busy} disabled={!text.trim()}>
-                {t('commun.envoyer')}
-              </Button>
-            </form>
-            {(canPass || canReturn) && (
-              <div className="turn-secondary-actions">
-                {canPass && (
-                  <button type="button" className="link-btn" disabled={busy} onClick={() => runAction(onPass)}>
-                    {t('partie.refuser')}
+      {turn.phase === 'answering' && (
+        <>
+          {isActive ? (
+            <>
+              <form onSubmit={handleSubmit} className="turn-answer-form">
+                <textarea
+                  className="answer-input"
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  placeholder={t('partie.ecrisTaReponse')}
+                  rows={3}
+                  autoFocus
+                />
+                <Button type="submit" variant="dark" block arrow busy={busy} disabled={!text.trim()}>
+                  {t('commun.envoyer')}
+                </Button>
+              </form>
+              {(canPass || canReturn) && (
+                <div className="turn-secondary-actions">
+                  {canPass && (
+                    <button type="button" className="link-btn" disabled={busy} onClick={() => runAction(onPass)}>
+                      {t('partie.refuser')}
+                    </button>
+                  )}
+                  {canReturn && (
+                    <button type="button" className="link-btn" disabled={busy} onClick={() => runAction(onReturnQuestion)}>
+                      {t('partie.retournerLaQuestion')}
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="menu-item-hint">{t('partie.estEnTrainDeRepondre', { pseudo: activeName })}</p>
+          )}
+          {canJoker && (
+            <div className="turn-secondary-actions">
+              {regles?.jokerInverse ? (
+                <>
+                  <button
+                    type="button"
+                    className="link-btn"
+                    disabled={busy}
+                    onClick={() => runAction(() => onActivateJoker('style'))}
+                  >
+                    {t('partie.activerJokerStyle')}
                   </button>
-                )}
-                {canReturn && (
-                  <button type="button" className="link-btn" disabled={busy} onClick={() => runAction(onReturnQuestion)}>
-                    {t('partie.retournerLaQuestion')}
-                  </button>
-                )}
-              </div>
-            )}
-          </>
-        ) : (
-          <p className="menu-item-hint">{t('partie.estEnTrainDeRepondre', { pseudo: activeName })}</p>
-        ))}
+                  {canJokerInverse && (
+                    <button
+                      type="button"
+                      className="link-btn"
+                      disabled={busy}
+                      onClick={() => runAction(() => onActivateJoker('questionPrecedente'))}
+                    >
+                      {t('partie.activerJokerInverse')}
+                    </button>
+                  )}
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="link-btn"
+                  disabled={busy}
+                  onClick={() => runAction(() => onActivateJoker('style'))}
+                >
+                  {t('partie.activerJoker')}
+                </button>
+              )}
+            </div>
+          )}
+        </>
+      )}
 
       {turn.phase === 'voting' && <p className="menu-item-hint">{t('partie.reponseDansLeChat')}</p>}
+
+      {turn.phase === 'voting' && isActive && regles?.bluffAssume && !bluffDeclaredLocally && (
+        <div className="turn-secondary-actions">
+          <button
+            type="button"
+            className="link-btn"
+            disabled={busy}
+            onClick={() =>
+              runAction(async () => {
+                await onDeclareBluff();
+                setBluffDeclaredLocally(true);
+              })
+            }
+          >
+            {t('partie.declarerBluff')}
+          </button>
+        </div>
+      )}
 
       {turn.phase === 'jugement' &&
         (isActive ? (

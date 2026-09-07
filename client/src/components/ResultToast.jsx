@@ -9,7 +9,7 @@ function playerName(players, id) {
 // détail (qui, combien de votes) reste en légende discrète en dessous. Gère
 // aussi les issues des règles optionnelles (refus à points négatifs, tour
 // surprise à plusieurs gagnants) avec le même gabarit visuel.
-function ResultToast({ result, players }) {
+function ResultToast({ result, players, myId }) {
   const { t } = useI18n();
   const [phase, setPhase] = useState('hidden'); // hidden | visible | fading
 
@@ -36,8 +36,22 @@ function ResultToast({ result, players }) {
   } else {
     const pseudo = playerName(players, result.playerId);
     pointsLabel = result.points >= 0 ? t('commun.pointsGagnes', { points: result.points }) : String(result.points);
-    const thumbsUp = result.votes ? Object.values(result.votes).filter((v) => v === 'up').length : 0;
-    caption = `${pseudo}${thumbsUp > 0 ? ` · ${thumbsUp} 👍` : ''}`;
+
+    if (result.bluffAssume?.declared) {
+      // Règle G : révélé pour la première fois ici, jamais avant (voir
+      // TurnPanel/BluffMisePanel, aucun des deux ne diffuse quoi que ce soit).
+      caption = t('partie.bluffRevele', { pseudo });
+      const mine =
+        result.bluffAssume.voterResults.find((r) => r.voterId === myId) ??
+        result.bluffAssume.miseResults.find((r) => r.voterId === myId);
+      if (mine) {
+        const delta = 'points' in mine ? mine.points : mine.delta;
+        caption += ` · ${delta >= 0 ? '+' : ''}${delta}`;
+      }
+    } else {
+      const thumbsUp = result.votes ? Object.values(result.votes).filter((v) => v === 'up').length : 0;
+      caption = `${pseudo}${thumbsUp > 0 ? ` · ${thumbsUp} 👍` : ''}`;
+    }
   }
 
   return (

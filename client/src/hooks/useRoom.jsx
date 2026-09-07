@@ -111,6 +111,9 @@ function currentTurnFromStarted(payload) {
     returned: false,
     originalPlayerId: null,
     pariMutuel: null,
+    jokerConstraint: null,
+    jokerInverse: false,
+    bluffDeclared: false,
     choices: null,
     answerDeadline: payload.answerDeadline,
     voteDeadline: null,
@@ -243,6 +246,7 @@ export function RoomProvider({ children }) {
             points: payload.points,
             votes: payload.votes,
             pariMutuel: payload.pariMutuel ?? null,
+            bluffAssume: payload.bluffAssume ?? null,
           },
           currentTurn:
             prev.currentTurn && prev.currentTurn.turnNumber === payload.turnNumber
@@ -331,6 +335,32 @@ export function RoomProvider({ children }) {
         };
       });
     }
+    function onJokerActivated(payload) {
+      setRoom((prev) => {
+        if (!prev.currentTurn || prev.currentTurn.turnNumber !== payload.turnNumber) return prev;
+        if (payload.mode === 'questionPrecedente') {
+          return {
+            ...prev,
+            currentTurn: {
+              ...prev.currentTurn,
+              jokerInverse: true,
+              jokerActivatedBy: payload.activatedBy,
+              type: payload.questionType,
+              questionId: payload.questionId,
+              contenu: payload.contenu,
+            },
+          };
+        }
+        return {
+          ...prev,
+          currentTurn: {
+            ...prev.currentTurn,
+            jokerConstraint: payload.contrainte,
+            jokerActivatedBy: payload.activatedBy,
+          },
+        };
+      });
+    }
     function onJugementStarted(payload) {
       setRoom((prev) => {
         if (!prev.currentTurn || prev.currentTurn.turnNumber !== payload.turnNumber) return prev;
@@ -407,6 +437,7 @@ export function RoomProvider({ children }) {
     socket.on('turn:questionChoiceOffered', onQuestionChoiceOffered);
     socket.on('turn:niveauChoiceOffered', onNiveauChoiceOffered);
     socket.on('turn:questionReturned', onQuestionReturned);
+    socket.on('turn:jokerActivated', onJokerActivated);
     socket.on('turn:jugementStarted', onJugementStarted);
     socket.on('turn:surpriseAnswered', onSurpriseAnswered);
     socket.on('turn:surpriseVotingStarted', onSurpriseVotingStarted);
@@ -434,6 +465,7 @@ export function RoomProvider({ children }) {
       socket.off('turn:questionChoiceOffered', onQuestionChoiceOffered);
       socket.off('turn:niveauChoiceOffered', onNiveauChoiceOffered);
       socket.off('turn:questionReturned', onQuestionReturned);
+      socket.off('turn:jokerActivated', onJokerActivated);
       socket.off('turn:jugementStarted', onJugementStarted);
       socket.off('turn:surpriseAnswered', onSurpriseAnswered);
       socket.off('turn:surpriseVotingStarted', onSurpriseVotingStarted);
@@ -532,6 +564,16 @@ export function RoomProvider({ children }) {
   // ---------- Règle C : la question retournée ----------
   const returnQuestionAction = useCallback(() => emitWithAck('turn:returnQuestion', {}), []);
 
+  // ---------- Règle F : le joker du public (+ variante "joker inversé") ----------
+  const activateJoker = useCallback((effect = 'style') => emitWithAck('turn:joker', { effect }), []);
+
+  // ---------- Règle G : le bluff assumé (avec mise collective) ----------
+  const declareBluff = useCallback(() => emitWithAck('turn:bluffDeclare', {}), []);
+  const submitBluffMise = useCallback(
+    (montant, prediction) => emitWithAck('turn:bluffMise', { montant, prediction }),
+    []
+  );
+
   // ---------- Règle E : le pari mutuel ----------
   const sendBet = useCallback((text) => emitWithAck('turn:bet', { text }), []);
   const judgeBet = useCallback((verdict) => emitWithAck('turn:judgeBet', { verdict }), []);
@@ -564,6 +606,9 @@ export function RoomProvider({ children }) {
         chooseQuestion,
         respondNiveauChoice,
         returnQuestionAction,
+        activateJoker,
+        declareBluff,
+        submitBluffMise,
         sendBet,
         judgeBet,
         sendSurpriseAnswer,

@@ -26,14 +26,22 @@ export async function updateRoomRegles(db, roomId, regles) {
        regle_double_ou_rien = $2,
        regle_question_retournee = $3,
        regle_tour_surprise = $4,
-       regle_pari_mutuel = $5
-     WHERE id = $6`,
+       regle_pari_mutuel = $5,
+       regle_joker_public = $6,
+       regle_joker_inverse = $7,
+       regle_bluff_assume = $8,
+       regle_bluff_surprise = $9
+     WHERE id = $10`,
     [
       regles.refusCouteux,
       regles.doubleOuRien,
       regles.questionRetournee,
       regles.tourSurprise,
       regles.pariMutuel,
+      regles.jokerPublic,
+      regles.jokerInverse,
+      regles.bluffAssume,
+      regles.bluffSurprise,
       roomId,
     ]
   );
@@ -46,6 +54,10 @@ export function reglesFromRoomRow(row) {
     questionRetournee: row.regle_question_retournee ?? false,
     tourSurprise: row.regle_tour_surprise ?? false,
     pariMutuel: row.regle_pari_mutuel ?? false,
+    jokerPublic: row.regle_joker_public ?? false,
+    jokerInverse: row.regle_joker_inverse ?? false,
+    bluffAssume: row.regle_bluff_assume ?? false,
+    bluffSurprise: row.regle_bluff_surprise ?? false,
   };
 }
 
@@ -200,11 +212,14 @@ export async function fetchRoomPlayers(db, roomId) {
 
 // --- turns ---
 
-export async function insertTurn(db, { roomId, partieId, playerId, questionId, numero, deadline, doubleOuRien = false }) {
+export async function insertTurn(
+  db,
+  { roomId, partieId, playerId, questionId, numero, deadline, doubleOuRien = false, bluffDeclare = false, bluffSurprise = false }
+) {
   const res = await db.query(
-    `INSERT INTO turns (room_id, partie_id, player_id, question_id, numero, status, deadline, double_ou_rien)
-     VALUES ($1, $2, $3, $4, $5, 'answering', $6, $7) RETURNING id`,
-    [roomId, partieId, playerId, questionId, numero, deadline, doubleOuRien]
+    `INSERT INTO turns (room_id, partie_id, player_id, question_id, numero, status, deadline, double_ou_rien, bluff_declare, bluff_surprise)
+     VALUES ($1, $2, $3, $4, $5, 'answering', $6, $7, $8, $9) RETURNING id`,
+    [roomId, partieId, playerId, questionId, numero, deadline, doubleOuRien, bluffDeclare, bluffSurprise]
   );
   return res.rows[0].id;
 }
@@ -217,6 +232,47 @@ export async function updateTurnReturned(db, turnId, { newPlayerId, returnedFrom
     returnedFromPlayerId,
     turnId,
   ]);
+}
+
+// Règle F, variante "joker inversé" : la question de ce tour est remplacée
+// par celle du tour précédent — contrairement à la contrainte de style
+// (jamais persistée), un vrai changement de question doit survivre à une
+// reconnexion en cours de tour, donc une écriture explicite ici.
+// question_id (celle tirée à l'origine pour ce tour, jamais montrée) est mis
+// à NULL plutôt qu'écrasé : une contrainte UNIQUE(partie_id, question_id)
+// empêche une question d'apparaître deux fois dans la même partie, et cette
+// même question reste par ailleurs déjà référencée par le tour précédent
+// qu'on recycle. La question réellement posée vit dans une colonne dédiée
+// (joker_inverse_question_id) — voir fetchUsedQuestionIds et fetchTurnsRecap
+// pour les deux endroits qui doivent en tenir compte.
+export async function updateTurnQuestion(db, turnId, { questionId, jokerInverse }) {
+  await db.query('UPDATE turns SET question_id = NULL, joker_inverse_question_id = $1, joker_inverse = $2 WHERE id = $3', [
+    questionId,
+    jokerInverse,
+    turnId,
+  ]);
+}
+
+// Règle G : la déclaration elle-même doit survivre à une reconnexion en
+// cours de tour, sans quoi resolveTurn retomberait sur le vote de qualité
+// normal après un rechargement — perdant tout le mécanisme silencieusement,
+// exactement le genre de bug que le correctif room:rejoin visait à éviter.
+export async function updateTurnBluffDeclare(db, turnId) {
+  await db.query('UPDATE turns SET bluff_declare = true WHERE id = $1', [turnId]);
+}
+
+export async function insertBluffMise(db, { turnId, voterId, montant, prediction }) {
+  await db.query(
+    `INSERT INTO bluff_mises (turn_id, voter_id, montant, prediction)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (turn_id, voter_id) DO NOTHING`,
+    [turnId, voterId, montant, prediction]
+  );
+}
+
+export async function fetchBluffMisesForTurn(db, turnId) {
+  const res = await db.query('SELECT voter_id, montant, prediction FROM bluff_mises WHERE turn_id = $1', [turnId]);
+  return res.rows;
 }
 
 export async function updateTurnAnswered(db, turnId, { reponse, voteDeadline }) {
@@ -304,7 +360,16 @@ export async function fetchLatestTurn(db, partieId) {
 }
 
 export async function fetchUsedQuestionIds(db, partieId) {
-  const res = await db.query('SELECT question_id FROM turns WHERE partie_id = $1', [partieId]);
+  // COALESCE : un tour "joker inversé" a son question_id mis à NULL (voir
+  // updateTurnQuestion) — la question réellement posée pour ce tour vit dans
+  // joker_inverse_question_id à la place, déjà comptée "utilisée" par le tour
+  // d'origine qu'il recycle de toute façon.
+  const res = await db.query(
+    `SELECT COALESCE(joker_inverse_question_id, question_id) AS question_id
+     FROM turns
+     WHERE partie_id = $1 AND COALESCE(joker_inverse_question_id, question_id) IS NOT NULL`,
+    [partieId]
+  );
   return res.rows.map((r) => r.question_id);
 }
 
@@ -316,7 +381,7 @@ export async function fetchTurnsRecap(db, partieId) {
     `SELECT t.id, t.numero, t.player_id, u.pseudo, q.type, q.contenu, t.reponse, t.points, t.status
      FROM turns t
      LEFT JOIN users u ON u.id = t.player_id
-     LEFT JOIN questions q ON q.id = t.question_id
+     LEFT JOIN questions q ON q.id = COALESCE(t.joker_inverse_question_id, t.question_id)
      WHERE t.partie_id = $1 AND t.status IN ('done', 'timeout')
      ORDER BY t.numero ASC`,
     [partieId]

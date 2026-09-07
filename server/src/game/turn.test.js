@@ -21,7 +21,11 @@ import {
   surpriseAnswerTimeout,
   submitSurpriseVote,
   surpriseVoteTimeout,
+  activateJokerPublic,
+  declareBluff,
+  submitBluffMise,
 } from './turn.js';
+import { JOKER_CONTRAINTES, REGLES } from './constants.js';
 import { GameError } from './errors.js';
 
 function createSequenceRng(values) {
@@ -1129,6 +1133,391 @@ describe('règle E : le pari mutuel (2 joueurs uniquement)', () => {
       () => submitBet(start.room, { playerId: 'p2', text: '...' }),
       (err) => err.code === 'REGLE_DISABLED'
     );
+  });
+});
+
+describe('règle F : le joker du public', () => {
+  test('un autre joueur active le joker, une contrainte est tirée et diffusée', () => {
+    const room = threePlayerRoom({ maxTurns: 1, regles: { jokerPublic: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    assert.equal(start.room.currentTurn.activePlayerId, 'p1');
+
+    const activated = activateJokerPublic(start.room, { playerId: 'p2', rng: createSequenceRng([0]) });
+    assert.equal(activated.room.currentTurn.jokerConstraint, JOKER_CONTRAINTES[0]);
+    assert.deepEqual(activated.room.reglesUsage.jokerPublic, ['p2']);
+    assert.deepEqual(activated.effects, [
+      { type: 'JOKER_ACTIVATED', turnNumber: 1, activatedBy: 'p2', mode: 'style', contrainte: JOKER_CONTRAINTES[0] },
+    ]);
+  });
+
+  test('le joueur actif lui-même peut activer son propre joker', () => {
+    const room = threePlayerRoom({ maxTurns: 1, regles: { jokerPublic: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    const activated = activateJokerPublic(start.room, { playerId: 'p1', rng: createSequenceRng([0]) });
+    assert.equal(activated.room.currentTurn.jokerConstraint, JOKER_CONTRAINTES[0]);
+  });
+
+  test('désactivé par défaut : REGLE_DISABLED', () => {
+    const room = threePlayerRoom({ maxTurns: 1 });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    assert.throws(
+      () => activateJokerPublic(start.room, { playerId: 'p2' }),
+      (err) => err.code === 'REGLE_DISABLED'
+    );
+  });
+
+  test('un joueur ne peut pas réutiliser son joker déjà consommé cette partie', () => {
+    const room = threePlayerRoom({ maxTurns: 1, regles: { jokerPublic: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    const roomWithUsage = { ...start.room, reglesUsage: { ...start.room.reglesUsage, jokerPublic: ['p2'] } };
+    assert.throws(
+      () => activateJokerPublic(roomWithUsage, { playerId: 'p2' }),
+      (err) => err.code === 'JOKER_DEJA_UTILISE'
+    );
+  });
+
+  test('une seconde activation sur le même tour est ignorée silencieusement, sans consommer le joker du second joueur', () => {
+    const room = threePlayerRoom({ maxTurns: 1, regles: { jokerPublic: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    const first = activateJokerPublic(start.room, { playerId: 'p2', rng: createSequenceRng([0]) });
+    const second = activateJokerPublic(first.room, { playerId: 'p3', rng: createSequenceRng([1]) });
+    assert.deepEqual(second.effects, []);
+    assert.equal(second.room.currentTurn.jokerConstraint, JOKER_CONTRAINTES[0]);
+    assert.deepEqual(second.room.reglesUsage.jokerPublic, ['p2']);
+  });
+
+  test('indisponible hors de la phase "answering" (ex : choix parmi 3)', () => {
+    const room = threePlayerRoom({ maxTurns: 2, regles: { jokerPublic: true, refusCouteux: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2'], actionTop: ['a1', 'a2'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    const passed = submitPass(start.room, { playerId: 'p1' });
+    assert.equal(passed.room.currentTurn.phase, 'question_choice');
+    assert.throws(
+      () => activateJokerPublic(passed.room, { playerId: 'p2' }),
+      (err) => err.code === 'INVALID_PHASE'
+    );
+  });
+
+  test('indisponible pendant un tour surprise', () => {
+    const room = threePlayerRoom({ maxTurns: 1, regles: { jokerPublic: true, tourSurprise: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
+      rng: createSequenceRng([0.1, 0.0, BUCKET_DONT_CARE, 0.0]),
+    });
+    assert.equal(start.room.currentTurn.mode, 'surprise');
+    assert.throws(
+      () => activateJokerPublic(start.room, { playerId: 'p2' }),
+      (err) => err.code === 'INVALID_PHASE'
+    );
+  });
+});
+
+describe('règle F (variante) : le joker inversé', () => {
+  test('remplace la question du tour par celle du tour précédent, et rend l\'ancienne à la réserve', () => {
+    const room = twoPlayerRoom({ maxTurns: 2, regles: { jokerPublic: true, jokerInverse: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2'], actionTop: ['a1', 'a2'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    const turn1Type = start.room.currentTurn.type;
+    const turn1QuestionId = start.room.currentTurn.questionId;
+
+    const answered = submitAnswer(start.room, { playerId: 'p1', text: 'réponse 1' });
+    const turn2 = answered.room.currentTurn;
+    assert.equal(turn2.activePlayerId, 'p2');
+    assert.equal(answered.room.history[0].questionId, turn1QuestionId);
+    // Structurellement garanti : chaque id n'existe qu'une fois dans le
+    // réservoir, celui du tour 1 en a déjà été retiré avant ce second tirage.
+    assert.notEqual(turn2.questionId, turn1QuestionId);
+    const turn2OriginalQuestionId = turn2.questionId;
+    const turn2OriginalType = turn2.type;
+
+    const activated = activateJokerPublic(answered.room, { playerId: 'p1', effect: 'questionPrecedente' });
+    assert.equal(activated.room.currentTurn.questionId, turn1QuestionId);
+    assert.equal(activated.room.currentTurn.type, turn1Type);
+    assert.equal(activated.room.currentTurn.jokerInverse, true);
+    assert.equal(activated.room.currentTurn.jokerActivated, true);
+    assert.deepEqual(activated.room.reglesUsage.jokerPublic, ['p1']);
+    assert.deepEqual(activated.effects, [
+      {
+        type: 'JOKER_ACTIVATED',
+        turnNumber: 2,
+        activatedBy: 'p1',
+        mode: 'questionPrecedente',
+        questionId: turn1QuestionId,
+        questionType: turn1Type,
+      },
+    ]);
+    // La question jamais montrée du tour 2 retourne bien dans la réserve.
+    assert.ok(activated.room.questionPool[turn2OriginalType].top.includes(turn2OriginalQuestionId));
+
+    // La résolution normale qui suit garde trace du recyclage dans l'historique.
+    const resolved = submitAnswer(activated.room, { playerId: 'p2', text: 'réponse recyclée' });
+    assert.equal(resolved.room.history[1].jokerInverse, true);
+  });
+
+  test("indisponible au premier tour de la partie (aucun tour précédent), mais l'effet style reste disponible", () => {
+    const room = threePlayerRoom({ maxTurns: 1, regles: { jokerPublic: true, jokerInverse: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    assert.throws(
+      () => activateJokerPublic(start.room, { playerId: 'p2', effect: 'questionPrecedente' }),
+      (err) => err.code === 'JOKER_INVERSE_INDISPONIBLE'
+    );
+    const styleOk = activateJokerPublic(start.room, { playerId: 'p2', effect: 'style', rng: createSequenceRng([0]) });
+    assert.equal(styleOk.room.currentTurn.jokerConstraint, JOKER_CONTRAINTES[0]);
+  });
+
+  test('sans effet si jokerPublic est désactivé (dépendance sur le joker de base)', () => {
+    const room = threePlayerRoom({ maxTurns: 1, regles: { jokerInverse: true } }); // jokerPublic reste false
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    assert.equal(effectiveRegles(start.room).jokerInverse, false);
+    assert.throws(
+      () => activateJokerPublic(start.room, { playerId: 'p2', effect: 'questionPrecedente' }),
+      (err) => err.code === 'REGLE_DISABLED'
+    );
+  });
+
+  test('un seul joker par tour au total : la consommation est partagée entre les deux effets', () => {
+    const room = twoPlayerRoom({ maxTurns: 2, regles: { jokerPublic: true, jokerInverse: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1', 'v2'], actionTop: ['a1', 'a2'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    const answered = submitAnswer(start.room, { playerId: 'p1', text: 'réponse 1' });
+    const first = activateJokerPublic(answered.room, { playerId: 'p1', effect: 'questionPrecedente' });
+    const second = activateJokerPublic(first.room, { playerId: 'p2', effect: 'style', rng: createSequenceRng([0]) });
+    assert.deepEqual(second.effects, []);
+    assert.equal(second.room.currentTurn.jokerInverse, true);
+    assert.equal(second.room.currentTurn.jokerConstraint, null);
+    assert.deepEqual(second.room.reglesUsage.jokerPublic, ['p1']);
+  });
+});
+
+describe('règle G : le bluff assumé (avec mise collective)', () => {
+  test('mélange de votes/mises justes et faux, sans majorité dupée : pas de doublement du menteur', () => {
+    const room = nPlayerRoom(3, { maxTurns: 1, regles: { bluffAssume: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    const type = start.room.currentTurn.type;
+
+    const answered = submitAnswer(start.room, { playerId: 'p1', text: 'réponse' });
+    const declared = declareBluff(answered.room, { playerId: 'p1' });
+    assert.equal(declared.room.currentTurn.bluffDeclared, true);
+    assert.deepEqual(declared.effects, [{ type: 'BLUFF_DECLARED', turnNumber: 1 }]);
+
+    const misedP2 = submitBluffMise(declared.room, { playerId: 'p2', montant: 1, prediction: 'faux' });
+    const misedP3 = submitBluffMise(misedP2.room, { playerId: 'p3', montant: 2, prediction: 'vrai' });
+
+    const votedP2 = submitVote(misedP3.room, { voterId: 'p2', vote: 'down', turnNumber: 1 });
+    const resolved = submitVote(votedP2.room, { voterId: 'p3', vote: 'up', turnNumber: 1 });
+
+    const resolvedEffect = resolved.effects.find((e) => e.type === 'TURN_RESOLVED');
+    assert.equal(resolvedEffect.bluffAssume.declared, true);
+    assert.equal(resolvedEffect.bluffAssume.fooled, false, '1 up sur 2 votes : pas de majorité dupée');
+
+    const p1Points = resolved.room.players.find((p) => p.id === 'p1').score;
+    assert.equal(p1Points, type === 'verite' ? 1 : 2, 'le menteur touche ses points de base, non doublés');
+
+    const p2Score = resolved.room.players.find((p) => p.id === 'p2').score;
+    assert.equal(p2Score, 3, 'p2 : +2 (vote juste) +1 (mise juste sur "faux")');
+
+    const p3Score = resolved.room.players.find((p) => p.id === 'p3').score;
+    assert.equal(p3Score, -2, 'p3 : +0 (vote faux) -2 (mise perdue sur "vrai")');
+  });
+
+  test('majorité dupée : le menteur double ses points de ce tour', () => {
+    const room = nPlayerRoom(3, { maxTurns: 1, regles: { bluffAssume: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    const type = start.room.currentTurn.type;
+    const answered = submitAnswer(start.room, { playerId: 'p1', text: 'réponse' });
+    const declared = declareBluff(answered.room, { playerId: 'p1' });
+    const votedP2 = submitVote(declared.room, { voterId: 'p2', vote: 'up', turnNumber: 1 });
+    const resolved = submitVote(votedP2.room, { voterId: 'p3', vote: 'up', turnNumber: 1 });
+
+    const resolvedEffect = resolved.effects.find((e) => e.type === 'TURN_RESOLVED');
+    assert.equal(resolvedEffect.bluffAssume.fooled, true, '2 up sur 2 votes : majorité dupée');
+    const p1Points = resolved.room.players.find((p) => p.id === 'p1').score;
+    assert.equal(p1Points, (type === 'verite' ? 1 : 2) * REGLES.bluffLiarMultiplicateur);
+  });
+
+  test('mise placée mais bluff jamais déclaré : annulée, aucun gain ni perte', () => {
+    const room = nPlayerRoom(3, { maxTurns: 1, regles: { bluffAssume: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    const answered = submitAnswer(start.room, { playerId: 'p1', text: 'réponse' });
+    const mised = submitBluffMise(answered.room, { playerId: 'p2', montant: 2, prediction: 'faux' });
+    const votedP2 = submitVote(mised.room, { voterId: 'p2', vote: 'up', turnNumber: 1 });
+    const resolved = submitVote(votedP2.room, { voterId: 'p3', vote: 'up', turnNumber: 1 });
+
+    const resolvedEffect = resolved.effects.find((e) => e.type === 'TURN_RESOLVED');
+    assert.equal(resolvedEffect.bluffAssume.declared, false);
+    assert.equal(resolvedEffect.bluffAssume.miseResults[0].delta, 0);
+    const p2Score = resolved.room.players.find((p) => p.id === 'p2').score;
+    assert.equal(p2Score, 0, "la mise n'a aucun effet, le vote normal ne rapporte rien aux votants hors bluff");
+  });
+
+  test('validations : déclaration et mise', () => {
+    const room = nPlayerRoom(3, { maxTurns: 1, regles: { bluffAssume: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    const answered = submitAnswer(start.room, { playerId: 'p1', text: 'réponse' });
+
+    assert.throws(
+      () => declareBluff(answered.room, { playerId: 'p2' }),
+      (err) => err.code === 'NOT_YOUR_TURN'
+    );
+    const declared = declareBluff(answered.room, { playerId: 'p1' });
+    assert.throws(
+      () => declareBluff(declared.room, { playerId: 'p1' }),
+      (err) => err.code === 'BLUFF_DEJA_DECLARE'
+    );
+
+    assert.throws(
+      () => submitBluffMise(declared.room, { playerId: 'p1', montant: 1, prediction: 'faux' }),
+      (err) => err.code === 'CANNOT_MISE_SELF'
+    );
+    assert.throws(
+      () => submitBluffMise(declared.room, { playerId: 'p2', montant: 3, prediction: 'faux' }),
+      (err) => err.code === 'INVALID_MISE'
+    );
+    assert.throws(
+      () => submitBluffMise(declared.room, { playerId: 'p2', montant: 1, prediction: 'peut-etre' }),
+      (err) => err.code === 'INVALID_MISE'
+    );
+    const mised = submitBluffMise(declared.room, { playerId: 'p2', montant: 1, prediction: 'faux' });
+    assert.throws(
+      () => submitBluffMise(mised.room, { playerId: 'p2', montant: 2, prediction: 'vrai' }),
+      (err) => err.code === 'ALREADY_MISE'
+    );
+  });
+
+  test('désactivé par défaut : REGLE_DISABLED', () => {
+    const room = nPlayerRoom(3, { maxTurns: 1 });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    const answered = submitAnswer(start.room, { playerId: 'p1', text: 'réponse' });
+    assert.throws(
+      () => declareBluff(answered.room, { playerId: 'p1' }),
+      (err) => err.code === 'REGLE_DISABLED'
+    );
+    assert.throws(
+      () => submitBluffMise(answered.room, { playerId: 'p2', montant: 1, prediction: 'faux' }),
+      (err) => err.code === 'REGLE_DISABLED'
+    );
+  });
+
+  test('structurellement indisponible à 2 joueurs (le vote y est toujours sauté)', () => {
+    const room = twoPlayerRoom({ maxTurns: 1, regles: { bluffAssume: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    // À 2 joueurs, submitAnswer résout directement (aucune phase "voting").
+    const answered = submitAnswer(start.room, { playerId: 'p1', text: 'réponse' });
+    assert.equal(answered.room.currentTurn, null, 'la partie se termine (maxTurns: 1), aucun tour en cours');
+  });
+});
+
+describe('règle G (variante) : le bluff surprise', () => {
+  test('tirage gagnant, coin "menti" : bluffDeclared vrai, le joueur actif ne peut pas déclarer par-dessus', () => {
+    const room = nPlayerRoom(3, { maxTurns: 1, regles: { bluffAssume: true, bluffSurprise: true } });
+    const start = startGame(room, {
+      // [seuil bluff surprise (<0.2), type, panier, index, pile ou face (<0.5)]
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
+      rng: createSequenceRng([0.1, 0.0, BUCKET_DONT_CARE, 0.0, 0.2]),
+    });
+    assert.equal(start.room.currentTurn.mode, 'normal', 'reste un tour normal, pas un tour surprise classique');
+    assert.equal(start.room.currentTurn.bluffSurprise, true);
+    assert.equal(start.room.currentTurn.bluffDeclared, true);
+    const activePlayerId = start.room.currentTurn.activePlayerId;
+    const answered = submitAnswer(start.room, { playerId: activePlayerId, text: 'réponse' });
+    assert.throws(
+      () => declareBluff(answered.room, { playerId: activePlayerId }),
+      (err) => err.code === 'BLUFF_DEJA_DECLARE'
+    );
+  });
+
+  test('tirage gagnant, coin "sincère" : bluffDeclared faux, mais le joueur actif ne peut toujours pas déclarer', () => {
+    const room = nPlayerRoom(3, { maxTurns: 1, regles: { bluffAssume: true, bluffSurprise: true } });
+    const start = startGame(room, {
+      rng: createSequenceRng([0.1, 0.0, BUCKET_DONT_CARE, 0.0, 0.9]),
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
+    });
+    assert.equal(start.room.currentTurn.bluffSurprise, true);
+    assert.equal(start.room.currentTurn.bluffDeclared, false, 'le tirage a décidé "sincère" cette fois');
+    const activePlayerId = start.room.currentTurn.activePlayerId;
+    const answered = submitAnswer(start.room, { playerId: activePlayerId, text: 'réponse' });
+    assert.throws(
+      () => declareBluff(answered.room, { playerId: activePlayerId }),
+      (err) => err.code === 'BLUFF_DEJA_DECLARE',
+      "même avec bluffDeclared=false, le joueur n'a pas la main : le jeu a déjà décidé pour lui"
+    );
+  });
+
+  test('un seul effet par tour : le tour surprise classique prime, le bluff surprise ne se déclenche jamais en plus', () => {
+    const room = nPlayerRoom(3, { maxTurns: 1, regles: { tourSurprise: true, bluffAssume: true, bluffSurprise: true } });
+    const start = startGame(room, {
+      // Seuil du tour surprise classique gagnant (<0.2) : la fonction rend la
+      // main immédiatement, jamais de second tirage pour le bluff surprise.
+      rng: createSequenceRng([0.1, 0.0, BUCKET_DONT_CARE, 0.0]),
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
+    });
+    assert.equal(start.room.currentTurn.mode, 'surprise');
+  });
+
+  test("le bluff surprise se déclenche seul quand le tirage du tour surprise classique échoue", () => {
+    const room = nPlayerRoom(3, { maxTurns: 1, regles: { tourSurprise: true, bluffAssume: true, bluffSurprise: true } });
+    const start = startGame(room, {
+      // [échec du seuil tour surprise (>=0.2), succès du seuil bluff surprise (<0.2), type, panier, index, pile ou face]
+      rng: createSequenceRng([0.5, 0.1, 0.0, BUCKET_DONT_CARE, 0.0, 0.2]),
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
+    });
+    assert.equal(start.room.currentTurn.mode, 'normal');
+    assert.equal(start.room.currentTurn.bluffSurprise, true);
+  });
+
+  test('masqué sans bluffAssume : jamais de tirage, comportement de tour normal', () => {
+    const room = nPlayerRoom(3, { maxTurns: 1, regles: { bluffSurprise: true } }); // bluffAssume reste false
+    const start = startGame(room, {
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
+    });
+    assert.equal(effectiveRegles(start.room).bluffSurprise, false);
+    assert.equal(start.room.currentTurn.bluffSurprise, false);
   });
 });
 

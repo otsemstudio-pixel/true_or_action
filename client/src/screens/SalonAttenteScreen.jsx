@@ -400,6 +400,8 @@ function SalonAttenteScreen() {
           <div className="regle-list">
             {REGLE_KEYS.filter((key) => key !== 'pariMutuel' || room.players.length === 2)
               .filter((key) => key !== 'doubleOuRien' || !isCouple)
+              .filter((key) => key !== 'jokerInverse' || room.regles.jokerPublic)
+              .filter((key) => key !== 'bluffSurprise' || room.regles.bluffAssume)
               .map((key) => (
                 <div key={key} className="regle-row">
                   <div className="regle-info">

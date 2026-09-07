@@ -7,6 +7,7 @@ import Wheel from '../components/Wheel.jsx';
 import TurnPanel from '../components/TurnPanel.jsx';
 import SurpriseTurnPanel from '../components/SurpriseTurnPanel.jsx';
 import PariMutuelPanel from '../components/PariMutuelPanel.jsx';
+import BluffMisePanel from '../components/BluffMisePanel.jsx';
 import ChatPanel from '../components/ChatPanel.jsx';
 import ResultToast from '../components/ResultToast.jsx';
 import RecapPanel from '../components/RecapPanel.jsx';
@@ -24,6 +25,9 @@ function PartieScreen() {
     chooseQuestion,
     respondNiveauChoice,
     returnQuestionAction,
+    activateJoker,
+    declareBluff,
+    submitBluffMise,
     sendBet,
     judgeBet,
     sendSurpriseAnswer,
@@ -48,7 +52,7 @@ function PartieScreen() {
 
         <ReglesActives regles={room.regles} />
 
-        <ResultToast result={room.lastResult} players={room.players} />
+        <ResultToast result={room.lastResult} players={room.players} myId={myId} />
 
         <Wheel type={room.currentTurn?.type} turnNumber={room.currentTurn?.turnNumber} />
 
@@ -74,10 +78,15 @@ function PartieScreen() {
               onChooseQuestion={chooseQuestion}
               onRespondNiveauChoice={respondNiveauChoice}
               onReturnQuestion={returnQuestionAction}
+              onActivateJoker={activateJoker}
+              onDeclareBluff={declareBluff}
               onJudgeBet={judgeBet}
             />
             {room.regles.pariMutuel && (
               <PariMutuelPanel turn={room.currentTurn} players={room.players} myId={myId} onSendBet={sendBet} />
+            )}
+            {room.regles.bluffAssume && (
+              <BluffMisePanel turn={room.currentTurn} myId={myId} onSubmitMise={submitBluffMise} />
             )}
           </>
         )}

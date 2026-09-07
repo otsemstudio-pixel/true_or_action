@@ -30,6 +30,12 @@ export async function persistEffect(client, entry, newRoom, effect) {
         numero: effect.turnNumber,
         deadline: new Date(effect.answerDeadline),
         doubleOuRien: Boolean(effect.doubleOuRien),
+        // Règle G, variante "bluff surprise" : décidé dès la création du
+        // tour (voir game/turn.js), pas via une mise à jour ultérieure comme
+        // pour une déclaration manuelle — les deux colonnes existent déjà
+        // (bluff_declare sert aussi à la déclaration manuelle classique).
+        bluffDeclare: Boolean(effect.bluffDeclared),
+        bluffSurprise: Boolean(effect.bluffSurprise),
       });
       return { newTurnDbId: id };
     }
@@ -82,6 +88,22 @@ export async function persistEffect(client, entry, newRoom, effect) {
           await repo.updatePlayerScore(client, entry.dbRoomId, Number(effect.pariMutuel.bettorId), bettorScore);
         }
       }
+
+      // Règle G : première mécanique à verser des points à des joueurs autres
+      // que l'actif ou un bettor unique — chaque votant/miseur affecté doit
+      // voir son propre score persisté, pas seulement celui du joueur actif.
+      if (effect.bluffAssume) {
+        const affectedIds = new Set([
+          ...effect.bluffAssume.voterResults.map((r) => r.voterId),
+          ...effect.bluffAssume.miseResults.map((r) => r.voterId),
+        ]);
+        for (const voterId of affectedIds) {
+          const voterScore = newRoom.players.find((p) => p.id === voterId)?.score ?? null;
+          if (voterScore != null) {
+            await repo.updatePlayerScore(client, entry.dbRoomId, Number(voterId), voterScore);
+          }
+        }
+      }
       return null;
     }
     // Règle A : un refus se résout comme un tour normal (aucune réponse,
@@ -109,6 +131,42 @@ export async function persistEffect(client, entry, newRoom, effect) {
       });
       return null;
     }
+    // Règle F : la contrainte tirée elle-même n'est jamais persistée (donnée
+    // éphémère, voir reconstruct.js) — seul l'usage du joker par ce joueur
+    // doit survivre, pour ne jamais pouvoir être réutilisé cette partie.
+    case 'JOKER_ACTIVATED': {
+      await repo.insertRegleUsage(client, {
+        partieId: entry.dbPartieId,
+        playerId: Number(effect.activatedBy),
+        regle: 'jokerPublic',
+        turnId: entry.currentTurnDbId,
+      });
+      // Variante "joker inversé" : contrairement à la contrainte de style,
+      // le changement de question est un vrai changement d'état du tour —
+      // doit survivre à une reconnexion en cours de tour (voir repository.js).
+      if (effect.mode === 'questionPrecedente') {
+        await repo.updateTurnQuestion(client, entry.currentTurnDbId, {
+          questionId: effect.questionId,
+          jokerInverse: true,
+        });
+      }
+      return null;
+    }
+    // Règle G : ni l'une ni l'autre de ces deux écritures ne déclenche de
+    // diffusion (voir broadcastEffects, aucun cas pour ces types) — la
+    // persistance seule garantit qu'une reconnexion en cours de tour ne fait
+    // disparaître ni la déclaration ni une mise déjà posée.
+    case 'BLUFF_DECLARED':
+      await repo.updateTurnBluffDeclare(client, entry.currentTurnDbId);
+      return null;
+    case 'BLUFF_MISE_SUBMITTED':
+      await repo.insertBluffMise(client, {
+        turnId: entry.currentTurnDbId,
+        voterId: Number(effect.voterId),
+        montant: effect.montant,
+        prediction: effect.prediction,
+      });
+      return null;
     // Règle D : rien à écrire pendant le tour (réponses/votes cachés jusqu'à
     // la résolution) — tout se persiste d'un coup ici.
     case 'SURPRISE_RESOLVED': {

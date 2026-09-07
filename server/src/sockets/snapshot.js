@@ -1,7 +1,21 @@
 import { effectiveRegles } from '../game/room.js';
 
-export function buildSnapshot(entry) {
+// Règle G : le bluff assumé et les mises ne doivent jamais fuiter avant la
+// révélation dans turn:resolved, y compris via un snapshot de reconnexion
+// (room:rejoin) — d'où le second paramètre, absent de toutes les autres
+// utilisations de currentTurn dans ce fichier, aucune n'ayant jamais eu
+// besoin de varier son contenu selon qui la reçoit jusqu'ici.
+export function buildSnapshot(entry, viewerId = null) {
   const { room, chat, timers } = entry;
+  const isResolved = room.currentTurn?.phase === 'resolved';
+  // Une déclaration manuelle (Phase 3) reste visible du joueur actif qui l'a
+  // lui-même posée. Un bluff surprise (Phase 4, tiré par le jeu) reste caché
+  // de tout le monde, actif compris, jusqu'à la résolution — "surprise" veut
+  // dire surprise pour lui aussi, jamais de connaissance anticipée du tirage.
+  const isManualBluffVisible =
+    !room.currentTurn?.bluffSurprise &&
+    viewerId != null &&
+    String(viewerId) === String(room.currentTurn?.activePlayerId);
 
   let currentTurn = null;
   if (room.currentTurn) {
@@ -34,6 +48,16 @@ export function buildSnapshot(entry) {
         returned: room.currentTurn.returned,
         originalPlayerId: room.currentTurn.originalPlayerId,
         pariMutuel: room.currentTurn.pariMutuel,
+        jokerConstraint: room.currentTurn.jokerConstraint ?? null,
+        jokerInverse: Boolean(room.currentTurn.jokerInverse),
+        // Visible du joueur actif lui-même pour une déclaration manuelle
+        // (état de son propre bouton), et de tout le monde une fois résolu ;
+        // jamais avant sinon — bluffSurprise (règle G, variante) n'est lui
+        // jamais exposé, même au joueur actif (voir isManualBluffVisible).
+        bluffDeclared: isResolved || isManualBluffVisible ? Boolean(room.currentTurn.bluffDeclared) : false,
+        // Jamais montré avant la résolution, quel que soit le joueur qui
+        // regarde — y compris le miseur pour les mises des autres.
+        bluffMises: isResolved ? room.currentTurn.bluffMises : {},
         choices:
           room.currentTurn.choices?.map((c) => ({
             questionId: c.questionId,

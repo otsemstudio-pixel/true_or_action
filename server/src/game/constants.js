@@ -50,7 +50,30 @@ export const REGLES = {
   tourSurprisePointsGagnant: 3,
   tourSurprisePointsParticipant: 1,
   pariMutuelPoints: 2,
+  // Règle G : le bluff assumé (avec mise collective). Premier bonus versé
+  // directement à un VOTANT (pas au joueur actif) dans tout ce fichier —
+  // aligné sur pariMutuelPoints, déjà la valeur "devinette correcte"
+  // ailleurs, pour ne pas inventer une échelle séparée.
+  bluffVoteCorrectPoints: 2,
+  bluffLiarMultiplicateur: 2,
 };
+
+// Règle G : montants de mise autorisés sur la sincérité du joueur actif.
+export const BLUFF_MISE_MONTANTS = [1, 2];
+
+// Règle F : le joker du public — contrainte de style tirée au sort, aucun
+// vocabulaire équivalent n'existait ailleurs dans le jeu (vérifié avant
+// d'écrire cette liste). Clés stables, jamais affichées brutes : le client
+// les traduit via regles.jokerPublic.contraintes.<clé>.
+export const JOKER_CONTRAINTES = [
+  'phrase',
+  'chuchote',
+  'rime',
+  'yeuxFermes',
+  'troisiemePersonne',
+  'sansJe',
+  'chante',
+];
 
 export const REGLES_TIMERS = {
   niveauChoiceMs: 15_000, // fenêtre pour accepter/refuser le double ou rien

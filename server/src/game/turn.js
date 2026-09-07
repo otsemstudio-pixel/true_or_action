@@ -1,5 +1,16 @@
 import { GameError } from './errors.js';
-import { POINTS, VOTE_BONUS, VOTE_BONUS_MAX, VOTE_QUORUM_RATIO, TIMERS, PLAYERS, REGLES, REGLES_TIMERS } from './constants.js';
+import {
+  POINTS,
+  VOTE_BONUS,
+  VOTE_BONUS_MAX,
+  VOTE_QUORUM_RATIO,
+  TIMERS,
+  PLAYERS,
+  REGLES,
+  REGLES_TIMERS,
+  JOKER_CONTRAINTES,
+  BLUFF_MISE_MONTANTS,
+} from './constants.js';
 import { canStart, getPlayer, excludePlayer, effectiveRegles } from './room.js';
 
 const TOP_NIVEAU_WEIGHT = 0.6;
@@ -168,6 +179,85 @@ export function voteTimeout(room, { turnNumber, rng = defaultRng }) {
   assertTurnNumber(room, turnNumber);
 
   return resolveTurn(room, rng);
+}
+
+// ---------- Règle G : le bluff assumé (avec mise collective) ----------
+
+// Déclaration cachée : le joueur actif confirme en secret qu'il a menti.
+// Ni broadcast ni changement visible du vote "up"/"down" en cours — il reste
+// exactement le même vote de qualité aux yeux des votants (voir buildSnapshot
+// pour la vue filtrée par joueur). resolveTurn seul sait réinterpréter les
+// votes déjà là une fois ce champ posé, qu'ils aient été soumis avant ou
+// après cette déclaration : l'ordre des deux actions n'a aucune importance.
+export function declareBluff(room, { playerId }) {
+  assertNormalTurn(room);
+  assertTurnPhase(room, 'voting');
+  const regles = effectiveRegles(room);
+  if (!regles.bluffAssume) {
+    throw new GameError('REGLE_DISABLED', "Le bluff assumé n'est pas activé dans ce salon");
+  }
+  if (room.currentTurn.activePlayerId !== playerId) {
+    throw new GameError('NOT_YOUR_TURN', "Ce n'est pas votre tour");
+  }
+  // "Déjà déclaré" couvre aussi bien une déclaration manuelle antérieure
+  // qu'un tour bluff surprise (règle G, variante) : dans les deux cas, le
+  // joueur actif n'a plus la main sur ce tour, qu'il ait "gagné" ou non le
+  // tirage automatique.
+  if (room.currentTurn.bluffDeclared || room.currentTurn.bluffSurprise) {
+    throw new GameError('BLUFF_DEJA_DECLARE', 'Le bluff a déjà été déclaré pour ce tour');
+  }
+
+  const turnNumber = room.currentTurn.turnNumber;
+  const room2 = {
+    ...room,
+    currentTurn: { ...room.currentTurn, bluffDeclared: true },
+  };
+
+  return { room: room2, effects: [{ type: 'BLUFF_DECLARED', turnNumber }] };
+}
+
+// Mise secrète : un votant (jamais le joueur actif) risque 1 ou 2 points sur
+// "vrai" (il pense que le joueur actif a été sincère, donc n'a pas menti) ou
+// "faux" (il pense qu'il a menti). Ne paie que si un bluff a effectivement
+// été déclaré sur ce tour — sinon la mise n'a tout simplement aucun objet à
+// juger et reste sans effet (voir resolveTurn). Comme la déclaration
+// ci-dessus, aucun effet diffusé : jamais visible avant la résolution.
+export function submitBluffMise(room, { playerId, montant, prediction }) {
+  assertNormalTurn(room);
+  assertTurnPhase(room, 'voting');
+  const regles = effectiveRegles(room);
+  if (!regles.bluffAssume) {
+    throw new GameError('REGLE_DISABLED', "Le bluff assumé n'est pas activé dans ce salon");
+  }
+  if (playerId === room.currentTurn.activePlayerId) {
+    throw new GameError('CANNOT_MISE_SELF', 'Le joueur actif ne peut pas miser sur lui-même');
+  }
+  if (!getPlayer(room, playerId)) {
+    throw new GameError('PLAYER_NOT_FOUND', 'Joueur introuvable dans le salon');
+  }
+  if (room.currentTurn.bluffMises[playerId]) {
+    throw new GameError('ALREADY_MISE', 'Ce joueur a déjà misé pour ce tour');
+  }
+  if (!BLUFF_MISE_MONTANTS.includes(montant)) {
+    throw new GameError('INVALID_MISE', 'Le montant de la mise doit être 1 ou 2');
+  }
+  if (prediction !== 'vrai' && prediction !== 'faux') {
+    throw new GameError('INVALID_MISE', 'Prédiction invalide');
+  }
+
+  const turnNumber = room.currentTurn.turnNumber;
+  const room2 = {
+    ...room,
+    currentTurn: {
+      ...room.currentTurn,
+      bluffMises: { ...room.currentTurn.bluffMises, [playerId]: { montant, prediction } },
+    },
+  };
+
+  return {
+    room: room2,
+    effects: [{ type: 'BLUFF_MISE_SUBMITTED', turnNumber, voterId: playerId, montant, prediction }],
+  };
 }
 
 // ---------- Règle A : le refus qui coûte ----------
@@ -363,6 +453,125 @@ function findBestPreviousVoter(room) {
   if (!last || last.mode !== 'normal') return null;
   const upVoter = Object.entries(last.votes ?? {}).find(([, v]) => v === 'up');
   return upVoter ? upVoter[0] : null;
+}
+
+// ---------- Règle F : le joker du public (+ variante "joker inversé") ----------
+
+// Un seul joker par joueur et par partie, avec un choix d'effet au moment de
+// l'activation — pas deux compteurs séparés : "l'inversé" n'est qu'une
+// seconde façon de dépenser le même joker que la contrainte de style.
+// Le tour précédent, au sens de cet effet, est toujours room.history[-1] :
+// même motif que findBestPreviousVoter (règle C) juste au-dessus, y compris
+// l'exclusion des tours surprise (mode différent, pas de "la" question d'un
+// seul répondant à réutiliser de la même façon).
+function findPreviousNormalTurn(room) {
+  const last = room.history[room.history.length - 1];
+  if (!last || last.mode !== 'normal' || last.questionId == null) return null;
+  return { questionId: last.questionId, type: last.type };
+}
+
+// N'importe quel joueur (y compris le joueur actif lui-même, le prompt ne
+// l'exclut pas) peut, une fois par partie, activer ce joker tant que la
+// question est révélée et qu'il n'y a pas encore répondu — il n'existe pas de
+// sous-phase dédiée "question révélée mais réponse pas commencée" dans ce
+// jeu, la fenêtre d'activation est donc toute la phase "answering".
+export function activateJokerPublic(room, { playerId, effect = 'style', rng = defaultRng }) {
+  assertNormalTurn(room);
+  assertTurnPhase(room, 'answering');
+  const regles = effectiveRegles(room);
+
+  if (effect === 'style') {
+    if (!regles.jokerPublic) {
+      throw new GameError('REGLE_DISABLED', "Le joker du public n'est pas activé dans ce salon");
+    }
+  } else if (effect === 'questionPrecedente') {
+    if (!regles.jokerInverse) {
+      throw new GameError('REGLE_DISABLED', "Le joker inversé n'est pas activé dans ce salon");
+    }
+  } else {
+    throw new GameError('INVALID_JOKER_EFFECT', 'Effet de joker invalide');
+  }
+
+  const turnNumber = room.currentTurn.turnNumber;
+
+  // Un autre joueur a activé le joker sur ce même tour (n'importe quel effet)
+  // entre l'affichage du bouton côté client et la réception de cette action
+  // (course classique à deux clics quasi simultanés) : ignoré sans erreur,
+  // sans consommer le joker de celui qui arrive en second — rien ne lui a été
+  // refusé, un effet est déjà en place pour ce tour.
+  if (room.currentTurn.jokerActivated) {
+    return { room, effects: [] };
+  }
+
+  if (room.reglesUsage.jokerPublic.includes(playerId)) {
+    throw new GameError('JOKER_DEJA_UTILISE', 'Vous avez déjà utilisé votre joker cette partie');
+  }
+
+  const reglesUsage = {
+    ...room.reglesUsage,
+    jokerPublic: [...room.reglesUsage.jokerPublic, playerId],
+  };
+
+  if (effect === 'questionPrecedente') {
+    const previous = findPreviousNormalTurn(room);
+    if (!previous) {
+      throw new GameError('JOKER_INVERSE_INDISPONIBLE', 'Aucun tour précédent à réutiliser');
+    }
+
+    // La question déjà tirée pour ce tour n'a jamais été montrée à personne :
+    // elle retourne dans la réserve plutôt que d'être perdue (même logique
+    // que les propositions écartées du choix parmi 3, règle A).
+    const discardedType = room.currentTurn.type;
+    const discardedId = room.currentTurn.questionId;
+    const questionPool = {
+      ...room.questionPool,
+      [discardedType]: {
+        ...room.questionPool[discardedType],
+        top: [...room.questionPool[discardedType].top, discardedId],
+      },
+    };
+
+    const room2 = {
+      ...room,
+      questionPool,
+      currentTurn: {
+        ...room.currentTurn,
+        questionId: previous.questionId,
+        type: previous.type,
+        jokerActivated: true,
+        jokerInverse: true,
+      },
+      reglesUsage,
+    };
+
+    return {
+      room: room2,
+      effects: [
+        {
+          type: 'JOKER_ACTIVATED',
+          turnNumber,
+          activatedBy: playerId,
+          mode: 'questionPrecedente',
+          questionId: previous.questionId,
+          questionType: previous.type,
+        },
+      ],
+    };
+  }
+
+  const index = Math.floor(rng() * JOKER_CONTRAINTES.length);
+  const contrainte = JOKER_CONTRAINTES[index];
+
+  const room2 = {
+    ...room,
+    currentTurn: { ...room.currentTurn, jokerConstraint: contrainte, jokerActivated: true },
+    reglesUsage,
+  };
+
+  return {
+    room: room2,
+    effects: [{ type: 'JOKER_ACTIVATED', turnNumber, activatedBy: playerId, mode: 'style', contrainte }],
+  };
 }
 
 // ---------- Règle E : le pari mutuel (2 joueurs uniquement) ----------
@@ -689,6 +898,19 @@ function advanceTurn(room, rng) {
   const activePlayerId = room.turnOrder[currentTurnIndex];
   const baseRoom = { ...room, turnNumber, currentTurnIndex };
 
+  // Règle G, variante "bluff surprise" : même déclencheur probabiliste que le
+  // tour surprise ci-dessus (même constante REGLES.tourSurpriseChance),
+  // jamais réutilisé pour tirer deux fois — ce second tirage n'est atteint
+  // que si le premier n'a pas déjà rendu la main, donc jamais les deux effets
+  // sur le même tour. Saute la pré-phase de double ou rien exactement comme
+  // le tour surprise classique le fait déjà juste au-dessus, pour rester
+  // cohérent avec ce précédent plutôt que d'inventer un nouveau cas.
+  if (regles.bluffSurprise && !regles.pariMutuel) {
+    if (rng() < REGLES.tourSurpriseChance) {
+      return startAnsweringTurn(baseRoom, activePlayerId, rng, { bluffSurprise: true });
+    }
+  }
+
   if (regles.doubleOuRien && room.niveauMax < 3) {
     return startNiveauChoiceTurn(baseRoom, activePlayerId);
   }
@@ -772,7 +994,12 @@ function startQuestionChoiceTurn(room, rng) {
 // Révèle la question et ouvre la phase de réponse — point d'entrée commun au
 // tirage direct, à la sortie d'une offre de double ou rien et à la sortie
 // d'un choix parmi 3.
-function startAnsweringTurn(room, activePlayerId, rng, { doubleOuRien = false, forcedType = null, forcedQuestionId = null }) {
+function startAnsweringTurn(
+  room,
+  activePlayerId,
+  rng,
+  { doubleOuRien = false, forcedType = null, forcedQuestionId = null, bluffSurprise = false }
+) {
   const turnNumber = room.turnNumber;
   let type = forcedType;
   let questionId = forcedQuestionId;
@@ -795,6 +1022,13 @@ function startAnsweringTurn(room, activePlayerId, rng, { doubleOuRien = false, f
   const regles = effectiveRegles(room);
   const pariMutuel = regles.pariMutuel ? { bettorId: null, bet: null, verdict: null } : null;
 
+  // Règle G, variante "bluff surprise" : le jeu décide à la place du joueur,
+  // par tirage — 50/50 entre "il a réellement menti" et "il reste sincère,
+  // mais le tour se déroule quand même comme un bluff à deviner" (le prompt
+  // dit "vrai ou simulé selon un tirage" sans préciser de probabilité :
+  // 50/50 est le choix le plus neutre). Toujours false hors bluff surprise.
+  const bluffDeclared = bluffSurprise ? rng() < 0.5 : false;
+
   const room2 = {
     ...room,
     questionPool: nextPool,
@@ -811,13 +1045,54 @@ function startAnsweringTurn(room, activePlayerId, rng, { doubleOuRien = false, f
       returned: false,
       originalPlayerId: null,
       pariMutuel,
+      // Règle F : au plus une activation du joker du public par tour, quel
+      // que soit l'effet choisi — jokerActivated est le seul état qui doit
+      // être vérifié pour ça (jokerConstraint reste null pour l'effet
+      // "question précédente", qui ne le renseigne jamais).
+      jokerActivated: false,
+      // Effet "contrainte de style" : contrainte tirée au sort, ou null tant
+      // que personne n'a activé le joker (ou si l'effet choisi était l'autre).
+      jokerConstraint: null,
+      // Effet "question précédente" (règle F, variante) : vrai si la question
+      // de CE tour a été remplacée par celle du tour précédent.
+      jokerInverse: false,
+      // Règle G : le bluff assumé — vérité cachée du jeu (déclarée par le
+      // joueur actif, ou tirée automatiquement en bluff surprise), jamais
+      // visible des autres avant la résolution. Le vote "up"/"down" habituel
+      // n'est jamais remplacé ni relabellé : il continue de fonctionner à
+      // l'identique pour ne rien laisser filtrer côté client tant que ce
+      // champ n'est pas encore révélé.
+      bluffDeclared,
+      // Marque ce tour comme décidé par le jeu (bluff surprise) plutôt que
+      // par le joueur — empêche declareBluff de s'y superposer, qu'il ait
+      // "gagné" ou non le tirage ci-dessus (voir sa garde). Jamais exposé
+      // côté client, même au joueur actif : "surprise" veut dire surprise
+      // pour lui aussi, exactement comme le tour surprise classique ne
+      // prévient personne à l'avance.
+      bluffSurprise,
+      // Mises secrètes des votants, jamais montrées avant la résolution
+      // (voir snapshot.js) : { [voterId]: { montant, prediction } }.
+      bluffMises: {},
     },
   };
 
   return {
     room: room2,
     effects: [
-      { type: 'TURN_STARTED', turnNumber, activePlayerId, questionType: type, questionId, doubleOuRien },
+      {
+        type: 'TURN_STARTED',
+        turnNumber,
+        activePlayerId,
+        questionType: type,
+        questionId,
+        doubleOuRien,
+        // Jamais transmis au broadcast (voir handlers.js, la liste de champs
+        // y est explicite) : seule la persistance (voir persistence.js) doit
+        // connaître ces deux valeurs pour qu'une reconnexion ne perde ni le
+        // marqueur "décidé par le jeu" ni le résultat du tirage.
+        bluffDeclared,
+        bluffSurprise,
+      },
       { type: 'START_TIMER', name: 'answer', turnNumber, durationMs: room.answerSec * 1000 },
     ],
   };
@@ -861,16 +1136,88 @@ function startSurpriseTurn(room, rng) {
 
 function resolveTurn(room, rng, { pariMutuelVerdict = null } = {}) {
   const turn = room.currentTurn;
+  const regles = effectiveRegles(room);
+  const bluffActive = turn.bluffDeclared;
+
+  // Règle G : une fois un bluff déclaré, "up"/"down" ne notent plus la
+  // qualité de la réponse mais la sincérité perçue — le bonus de qualité
+  // habituel n'a alors plus de sens et cède la place au mécanisme de bluff
+  // (voir bluffResult ci-dessous).
   const thumbsUp = Object.values(turn.votes).filter((v) => v === 'up').length;
-  const voteBonus = Math.min(thumbsUp * VOTE_BONUS, VOTE_BONUS_MAX);
+  const voteBonus = bluffActive ? 0 : Math.min(thumbsUp * VOTE_BONUS, VOTE_BONUS_MAX);
   let points = turn.answer === null ? 0 : POINTS[turn.type] + voteBonus;
   if (turn.doubleOuRien) {
     points = turn.answer === null ? 0 : points * REGLES.doubleOuRienMultiplicateur;
   }
 
+  // Règle G (suite) : calculé dès que la règle est active dans le salon,
+  // même si ce tour précis n'a vu ni déclaration ni mise — les votants ayant
+  // misé "à l'aveugle" (ils ne savent jamais à l'avance si ce tour est le
+  // bon) méritent une réponse explicite plutôt qu'un silence qui pourrait
+  // laisser croire à un bug.
+  let bluffResult = null;
+  if (regles.bluffAssume) {
+    const voteEntries = Object.entries(turn.votes);
+    const miseEntries = Object.entries(turn.bluffMises);
+
+    if (bluffActive) {
+      const totalVotes = voteEntries.length;
+      const fooledCount = voteEntries.filter(([, v]) => v === 'up').length;
+      const majorityFooled = totalVotes > 0 && fooledCount > totalVotes / 2;
+      if (majorityFooled && turn.answer !== null) {
+        points *= REGLES.bluffLiarMultiplicateur;
+      }
+      bluffResult = {
+        declared: true,
+        surprise: Boolean(turn.bluffSurprise),
+        fooled: majorityFooled,
+        // "down" = "je ne le crois pas sincère" = devine juste, il a bien
+        // menti par construction de declareBluff.
+        voterResults: voteEntries.map(([voterId, vote]) => {
+          const guessedRight = vote === 'down';
+          return { voterId, guessedRight, points: guessedRight ? REGLES.bluffVoteCorrectPoints : 0 };
+        }),
+        // "faux" = le miseur pense qu'il a menti = devine juste.
+        miseResults: miseEntries.map(([voterId, mise]) => {
+          const guessedRight = mise.prediction === 'faux';
+          const delta = guessedRight ? mise.montant : -mise.montant;
+          return { voterId, montant: mise.montant, prediction: mise.prediction, guessedRight, delta };
+        }),
+      };
+    } else {
+      // Règle active mais pas invoquée sur ce tour : rien à juger. Les mises
+      // déjà placées (le votant ne pouvait pas deviner à l'avance) sont
+      // annulées sans gain ni perte plutôt qu'ignorées silencieusement.
+      bluffResult = {
+        declared: false,
+        surprise: Boolean(turn.bluffSurprise),
+        fooled: false,
+        voterResults: [],
+        miseResults: miseEntries.map(([voterId, mise]) => ({
+          voterId,
+          montant: mise.montant,
+          prediction: mise.prediction,
+          guessedRight: false,
+          delta: 0,
+        })),
+      };
+    }
+  }
+
   let players = room.players.map((p) =>
     p.id === turn.activePlayerId ? { ...p, score: p.score + points } : p
   );
+
+  if (bluffResult) {
+    const deltasByPlayer = {};
+    for (const r of bluffResult.voterResults) {
+      deltasByPlayer[r.voterId] = (deltasByPlayer[r.voterId] ?? 0) + r.points;
+    }
+    for (const r of bluffResult.miseResults) {
+      deltasByPlayer[r.voterId] = (deltasByPlayer[r.voterId] ?? 0) + r.delta;
+    }
+    players = players.map((p) => (deltasByPlayer[p.id] ? { ...p, score: p.score + deltasByPlayer[p.id] } : p));
+  }
 
   let pariMutuelResult = null;
   if (turn.pariMutuel?.bet != null && pariMutuelVerdict != null) {
@@ -893,6 +1240,9 @@ function resolveTurn(room, rng, { pariMutuelVerdict = null } = {}) {
     doubleOuRien: turn.doubleOuRien,
     returned: turn.returned,
     pariMutuel: pariMutuelResult,
+    jokerConstraint: turn.jokerConstraint ?? null,
+    jokerInverse: Boolean(turn.jokerInverse),
+    bluffAssume: bluffResult,
   };
 
   let room2 = {
@@ -912,6 +1262,7 @@ function resolveTurn(room, rng, { pariMutuelVerdict = null } = {}) {
       timedOut: turn.answer === null,
       doubleOuRien: turn.doubleOuRien,
       pariMutuel: pariMutuelResult,
+      bluffAssume: bluffResult,
     },
   ];
 

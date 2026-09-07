@@ -1,6 +1,16 @@
 import { useI18n } from '../hooks/useI18n.jsx';
 
-export const REGLE_KEYS = ['refusCouteux', 'doubleOuRien', 'questionRetournee', 'tourSurprise', 'pariMutuel'];
+export const REGLE_KEYS = [
+  'refusCouteux',
+  'doubleOuRien',
+  'questionRetournee',
+  'tourSurprise',
+  'pariMutuel',
+  'jokerPublic',
+  'jokerInverse',
+  'bluffAssume',
+  'bluffSurprise',
+];
 
 // Résumé compact des règles actives — visible par tous les joueurs, dans le
 // salon d'attente comme pendant la partie.

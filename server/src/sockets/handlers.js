@@ -38,6 +38,9 @@ import {
   surpriseAnswerTimeout,
   submitSurpriseVote,
   surpriseVoteTimeout,
+  activateJokerPublic,
+  declareBluff,
+  submitBluffMise,
   validateMessageText,
   isWithinRateLimit,
 } from '../game/index.js';
@@ -162,6 +165,9 @@ function broadcastEffects(io, entry, effects, newAnswerMessage = null) {
           players: entry.room.players,
           doubleOuRien: Boolean(effect.doubleOuRien),
           pariMutuel: effect.pariMutuel ?? null,
+          // Règle G : jamais révélé avant cet instant précis (voir
+          // declareBluff/submitBluffMise, tous deux sans effet diffusé).
+          bluffAssume: effect.bluffAssume ?? null,
         });
         break;
       case 'GAME_ENDED':
@@ -209,6 +215,19 @@ function broadcastEffects(io, entry, effects, newAnswerMessage = null) {
           turnNumber: effect.turnNumber,
           fromPlayerId: effect.fromPlayerId,
           toPlayerId: effect.toPlayerId,
+        });
+        break;
+
+      // ---------- Règle F : le joker du public (+ variante "joker inversé") ----------
+      case 'JOKER_ACTIVATED':
+        io.to(entry.room.code).emit('turn:jokerActivated', {
+          turnNumber: effect.turnNumber,
+          activatedBy: effect.activatedBy,
+          mode: effect.mode,
+          contrainte: effect.contrainte ?? null,
+          questionId: effect.questionId ?? null,
+          questionType: effect.questionType ?? null,
+          contenu: effect.questionId != null ? entry.questionsById.get(effect.questionId) ?? null : null,
         });
         break;
 
@@ -445,7 +464,7 @@ export function registerSocketHandlers(io) {
         socket.join(code);
         socket.data.roomCode = code;
 
-        ack?.({ ok: true, snapshot: buildSnapshot(entry) });
+        ack?.({ ok: true, snapshot: buildSnapshot(entry, socket.data.playerId) });
       } catch (err) {
         ack?.(errorResponse(err));
       }
@@ -472,7 +491,7 @@ export function registerSocketHandlers(io) {
         socket.data.roomCode = entry.room.code;
 
         broadcastPlayers(io, entry);
-        ack?.({ ok: true, snapshot: buildSnapshot(entry) });
+        ack?.({ ok: true, snapshot: buildSnapshot(entry, socket.data.playerId) });
       } catch (err) {
         ack?.(errorResponse(err));
       }
@@ -527,7 +546,7 @@ export function registerSocketHandlers(io) {
         socket.data.roomCode = code;
 
         broadcastPlayers(io, entry);
-        ack?.({ ok: true, snapshot: buildSnapshot(entry) });
+        ack?.({ ok: true, snapshot: buildSnapshot(entry, socket.data.playerId) });
       } catch (err) {
         ack?.(errorResponse(err));
       }
@@ -837,6 +856,43 @@ export function registerSocketHandlers(io) {
       }
     });
 
+    // ---------- Règle G : le bluff assumé (avec mise collective) ----------
+    // Ni l'un ni l'autre de ces deux événements ne diffuse quoi que ce soit
+    // à la room (voir declareBluff/submitBluffMise : effects toujours vide
+    // côté broadcast) — seul l'ack, privé à l'émetteur, confirme la prise en
+    // compte. Rien ne doit fuiter avant la révélation dans turn:resolved.
+
+    socket.on('turn:bluffDeclare', async (_, ack) => {
+      try {
+        const entry = requireEntry(socket);
+        await runExclusive(entry, async () => {
+          const { room, effects } = declareBluff(entry.room, { playerId: socket.data.playerId });
+          await applyGameEffects(io, entry, room, effects);
+        });
+        ack?.({ ok: true });
+      } catch (err) {
+        ack?.(errorResponse(err));
+      }
+    });
+
+    socket.on('turn:bluffMise', async (payload, ack) => {
+      try {
+        const entry = requireEntry(socket);
+        const { montant, prediction } = payload ?? {};
+        await runExclusive(entry, async () => {
+          const { room, effects } = submitBluffMise(entry.room, {
+            playerId: socket.data.playerId,
+            montant,
+            prediction,
+          });
+          await applyGameEffects(io, entry, room, effects);
+        });
+        ack?.({ ok: true });
+      } catch (err) {
+        ack?.(errorResponse(err));
+      }
+    });
+
     // ---------- Règle A : le refus qui coûte ----------
 
     socket.on('turn:pass', async (_, ack) => {
@@ -889,6 +945,22 @@ export function registerSocketHandlers(io) {
         const entry = requireEntry(socket);
         await runExclusive(entry, async () => {
           const { room, effects } = returnQuestion(entry.room, { playerId: socket.data.playerId });
+          await applyGameEffects(io, entry, room, effects);
+        });
+        ack?.({ ok: true });
+      } catch (err) {
+        ack?.(errorResponse(err));
+      }
+    });
+
+    // ---------- Règle F : le joker du public (+ variante "joker inversé") ----------
+
+    socket.on('turn:joker', async (payload, ack) => {
+      try {
+        const entry = requireEntry(socket);
+        const effect = payload?.effect === 'questionPrecedente' ? 'questionPrecedente' : 'style';
+        await runExclusive(entry, async () => {
+          const { room, effects } = activateJokerPublic(entry.room, { playerId: socket.data.playerId, effect });
           await applyGameEffects(io, entry, room, effects);
         });
         ack?.({ ok: true });

@@ -74,6 +74,10 @@ export const DEFAULT_REGLES = {
   questionRetournee: false,
   tourSurprise: false,
   pariMutuel: false,
+  jokerPublic: false,
+  jokerInverse: false,
+  bluffAssume: false,
+  bluffSurprise: false,
 };
 
 function validateRegles(regles, current = DEFAULT_REGLES) {
@@ -106,6 +110,12 @@ export function effectiveRegles(room) {
     ...room.regles,
     doubleOuRien: room.regles.doubleOuRien && room.categorie !== 'couple',
     pariMutuel: room.regles.pariMutuel && activeCount === 2,
+    // Variante du joker du public (règle F) : n'a de sens que si le joker
+    // lui-même est actif, même bouton, même joker à consommer.
+    jokerInverse: room.regles.jokerInverse && room.regles.jokerPublic,
+    // Même principe pour la variante automatique du bluff assumé (règle G) :
+    // n'a de sens que si le mécanisme de base est lui-même actif.
+    bluffSurprise: room.regles.bluffSurprise && room.regles.bluffAssume,
   };
 }
 
@@ -143,8 +153,8 @@ export function createRoom({
     currentTurn: null,
     history: [],
     regles: validateRegles(regles),
-    // Une fois par partie et par joueur (règle C) : ids déjà consommés.
-    reglesUsage: { questionRetournee: [] },
+    // Une fois par partie et par joueur (règles C et F) : ids déjà consommés.
+    reglesUsage: { questionRetournee: [], jokerPublic: [] },
     // Posé par un refus (règle A) : le tour suivant démarre en choix parmi 3
     // questions plutôt que par un tirage direct.
     forceQuestionChoice: false,
@@ -285,7 +295,7 @@ export function restartRoom(room) {
     history: [],
     // Les réglages de règles (activées/désactivées) survivent au rejeu, mais
     // leur usage (une fois par partie et par joueur, etc.) repart à zéro.
-    reglesUsage: { questionRetournee: [] },
+    reglesUsage: { questionRetournee: [], jokerPublic: [] },
     forceQuestionChoice: false,
   };
 }

@@ -110,6 +110,35 @@ export default {
       nom: 'The mutual bet (2 players)',
       description: "With 2 players, the other bets on your answer before hearing it — a correct guess earns 2 points.",
     },
+    jokerPublic: {
+      nom: 'The crowd joker',
+      description:
+        "Once per game, anyone can impose a surprise constraint (whisper it, rhyme it...) on the player whose turn it is, before they answer.",
+      contraintes: {
+        phrase: 'Answer in a single sentence',
+        chuchote: 'Answer in a whisper',
+        rime: 'Answer in rhyme',
+        yeuxFermes: 'Answer with your eyes closed',
+        troisiemePersonne: 'Answer speaking about yourself in the third person',
+        sansJe: 'Answer without ever saying "I"',
+        chante: 'Answer by singing',
+      },
+    },
+    jokerInverse: {
+      nom: 'The reversed joker',
+      description:
+        "A variant of the crowd joker (the same joker, not a second one): instead of a style constraint, forces the active player to answer the previous turn's question.",
+    },
+    bluffAssume: {
+      nom: 'The owned bluff',
+      description:
+        "After answering, the active player can secretly confess they lied. The others guess blind whether they were sincere and can bet 1 or 2 points on their hunch — everything is revealed once the turn ends.",
+    },
+    bluffSurprise: {
+      nom: 'The surprise bluff',
+      description:
+        "A variant of the owned bluff (about one turn in five, like the surprise round): the game alone decides, by a random draw, whether the active player lied — they don't know in advance either.",
+    },
   },
 
   niveau: {
@@ -168,6 +197,22 @@ export default {
     // Rule C: the returned question
     retournerLaQuestion: 'Return the question',
     questionRetourneeMessage: 'Question returned to {{pseudo}}',
+
+    // Rule F: the crowd joker
+    activerJoker: 'Activate the crowd joker',
+    activerJokerStyle: 'Surprise style constraint',
+    activerJokerInverse: "Previous turn's question",
+    jokerInverseMessage: 'Question recycled from the previous turn (reversed joker)',
+
+    // Rule G: the owned bluff
+    declarerBluff: 'Confess that I lied',
+    miseTitre: 'Were they sincere?',
+    miseVrai: 'Sincere',
+    miseFaux: 'Lied',
+    miseMontant: '{{montant}} pt',
+    miseEnvoyer: 'Bet in secret',
+    miseEnvoyee: 'Bet placed — result at the next turn',
+    bluffRevele: '{{pseudo}} had lied!',
 
     // Rule D: the surprise round
     tourSurpriseTitre: 'Surprise round!',
@@ -302,6 +347,13 @@ export default {
     REGLE_DISABLED: 'This rule is not enabled in this room.',
     INVALID_REGLE: 'Invalid rule.',
     QUESTION_RETOURNEE_INDISPONIBLE: 'Cannot return the question on this turn.',
+    JOKER_DEJA_UTILISE: "You've already used your joker this game.",
+    JOKER_INVERSE_INDISPONIBLE: 'No previous turn to reuse right now.',
+    INVALID_JOKER_EFFECT: 'Invalid joker effect.',
+    BLUFF_DEJA_DECLARE: 'The bluff has already been declared for this turn.',
+    CANNOT_MISE_SELF: 'You cannot bet on yourself.',
+    ALREADY_MISE: "You've already placed a bet for this turn.",
+    INVALID_MISE: 'Invalid bet.',
     PARI_MUTUEL_INDISPONIBLE: 'The mutual bet is unavailable here.',
     SURPRISE_VOTE_INVALID: 'This player cannot receive a vote.',
     ALREADY_ANSWERED: 'You have already answered.',
