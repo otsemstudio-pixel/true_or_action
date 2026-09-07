@@ -1,6 +1,7 @@
 import * as repo from '../db/repository.js';
 import { pool } from '../db/pool.js';
 import { createRoomEntry } from './store.js';
+import { buildHistoryFromRows, buildCurrentNormalTurnFromRow } from './turnReconstruction.js';
 
 // Reconstruit un RoomEntry complet (état pur du jeu + cache mémoire) à partir
 // de la base — utilisé au démarrage (parties 'playing') et à la reconnexion
@@ -35,18 +36,11 @@ export async function loadRoomEntryFromDb(roomRow) {
 
   if (isLiveNormalTurn) {
     const votesRows = await repo.fetchVotesForTurn(pool, latestTurn.id);
-    const votes = {};
-    for (const v of votesRows) votes[String(v.voter_id)] = v.valeur === 1 ? 'up' : 'down';
-
     // Règle G : contrairement à la contrainte de style du joker (Phase 1),
     // la déclaration de bluff ET les mises doivent toutes deux survivre à une
     // reconnexion en cours de tour (exigence explicite de la Phase 3) — les
     // deux sont donc bien persistées, pas traitées comme éphémères.
     const bluffMisesRows = await repo.fetchBluffMisesForTurn(pool, latestTurn.id);
-    const bluffMises = {};
-    for (const m of bluffMisesRows) {
-      bluffMises[String(m.voter_id)] = { montant: m.montant, prediction: m.prediction };
-    }
 
     // Un tour "joker inversé" a son question_id mis à NULL en base (voir
     // repository.js updateTurnQuestion) : la question réellement posée vit
@@ -54,41 +48,17 @@ export async function loadRoomEntryFromDb(roomRow) {
     const effectiveQuestionId = latestTurn.joker_inverse_question_id ?? latestTurn.question_id;
     const questionRow = await repo.fetchQuestionById(pool, effectiveQuestionId);
 
-    currentTurn = {
-      mode: 'normal',
-      turnNumber: latestTurn.numero,
-      activePlayerId: String(latestTurn.player_id),
-      type: questionRow?.type ?? null,
-      questionId: effectiveQuestionId,
-      phase: latestTurn.status,
-      answer: latestTurn.reponse,
-      votes,
-      doubleOuRien: Boolean(latestTurn.double_ou_rien),
-      returned: latestTurn.returned_from_player_id != null,
-      originalPlayerId: latestTurn.returned_from_player_id != null ? String(latestTurn.returned_from_player_id) : null,
-      // Le pari en cours (texte, verdict) ne survit pas à une reconstruction :
-      // il n'est jamais persisté (donnée éphémère, voir game/turn.js). Même
-      // principe pour la contrainte du joker du public : seul son usage
-      // (une fois par partie, voir jokerPublicUsage ci-dessus) est persisté.
-      // La variante "joker inversé", elle, change réellement la question du
-      // tour (question_id ci-dessus) : ça, c'est bien persisté et survit.
-      pariMutuel: null,
-      jokerConstraint: null,
-      jokerInverse: Boolean(latestTurn.joker_inverse),
-      // Fidélité partielle assumée : si c'est la contrainte de style qui a
-      // été choisie (jamais persistée), une reconnexion en cours de tour
-      // oublie qu'un joker a déjà été activé sur ce tour précis — un second
-      // joueur pourrait alors en activer un autre. Fenêtre rare et sans
-      // enjeu de score, laissée telle quelle (même arbitrage que le pari
-      // mutuel en cours ci-dessus).
-      jokerActivated: Boolean(latestTurn.joker_inverse),
-      bluffDeclared: Boolean(latestTurn.bluff_declare),
-      // Doit survivre à une reconnexion, comme bluffDeclared ci-dessus :
-      // sinon le joueur actif regagnerait la main sur declareBluff après un
-      // rechargement, alors même que le tirage automatique a déjà eu lieu.
-      bluffSurprise: Boolean(latestTurn.bluff_surprise),
-      bluffMises,
-    };
+    // Le pari en cours (texte, verdict) et la contrainte de style du joker
+    // ne survivent jamais à une reconstruction : jamais persistés (données
+    // éphémères, voir game/turn.js) — fidélité partielle assumée, une
+    // reconnexion en cours de tour peut donc laisser un second joueur
+    // activer un nouveau joker de style. Fenêtre rare et sans enjeu de
+    // score, laissée telle quelle.
+    currentTurn = buildCurrentNormalTurnFromRow(latestTurn, {
+      votesRows,
+      bluffMisesRows,
+      questionType: questionRow?.type ?? null,
+    });
     currentTurnDbId = latestTurn.id;
     currentTurnIndex = turnOrder.indexOf(currentTurn.activePlayerId);
     deadlineInfo = {
@@ -140,6 +110,18 @@ export async function loadRoomEntryFromDb(roomRow) {
     : [];
   const jokerPublicUsage = currentPartie ? await repo.fetchRegleUsage(pool, currentPartie.id, 'jokerPublic') : [];
 
+  // room.history : reconstruit réellement depuis la base, comme le reste de
+  // l'état de la partie — jusqu'ici toujours réinitialisé à vide ici, ce qui
+  // rendait "la question retournée" (règle C) et le joker inversé, effet
+  // "question précédente" (règle G), indisponibles après la moindre
+  // reconnexion ou redémarrage serveur, tous deux ne lisant que
+  // room.history[history.length - 1] (voir game/turn.js).
+  const historyRows = currentPartie ? await repo.fetchTurnHistory(pool, currentPartie.id) : [];
+  const historyTurnIds = historyRows.map((r) => r.id);
+  const historyVotesRows = await repo.fetchVotesForTurnsWithVoter(pool, historyTurnIds);
+  const historySurpriseRows = await repo.fetchTourSurpriseReponsesForTurns(pool, historyTurnIds);
+  const history = buildHistoryFromRows(historyRows, historyVotesRows, historySurpriseRows);
+
   const room = {
     code: roomRow.code,
     hostId: String(roomRow.host_id),
@@ -156,7 +138,7 @@ export async function loadRoomEntryFromDb(roomRow) {
     turnNumber: latestTurn ? latestTurn.numero : 0,
     questionPool,
     currentTurn,
-    history: [],
+    history,
     regles,
     reglesUsage: {
       questionRetournee: questionRetourneeUsage.map(String),

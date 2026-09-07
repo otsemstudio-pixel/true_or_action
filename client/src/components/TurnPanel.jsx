@@ -75,6 +75,29 @@ function TurnPanel({
     }
   };
 
+  // Cas à part plutôt que via runAction : sur un tour bluff surprise, le
+  // joueur ne sait jamais à l'avance que le jeu a déjà décidé pour lui (voir
+  // game/turn.js declareBluff) — ce refus ne lui apprend rien qu'il devrait
+  // savoir, un message d'erreur serait donc plus déroutant qu'utile. On
+  // absorbe silencieusement et on masque le bouton, comme la seconde
+  // activation du joker (règle F) l'est déjà côté serveur.
+  const handleDeclareBluff = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      await onDeclareBluff();
+      setBluffDeclaredLocally(true);
+    } catch (err) {
+      if (err?.code === 'BLUFF_DEJA_DECLARE') {
+        setBluffDeclaredLocally(true);
+      } else {
+        setError(translateError(t, err));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!text.trim()) return;
@@ -256,17 +279,7 @@ function TurnPanel({
 
       {turn.phase === 'voting' && isActive && regles?.bluffAssume && !bluffDeclaredLocally && (
         <div className="turn-secondary-actions">
-          <button
-            type="button"
-            className="link-btn"
-            disabled={busy}
-            onClick={() =>
-              runAction(async () => {
-                await onDeclareBluff();
-                setBluffDeclaredLocally(true);
-              })
-            }
-          >
+          <button type="button" className="link-btn" disabled={busy} onClick={handleDeclareBluff}>
             {t('partie.declarerBluff')}
           </button>
         </div>

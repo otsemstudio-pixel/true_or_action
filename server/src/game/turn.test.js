@@ -1314,6 +1314,48 @@ describe('règle F (variante) : le joker inversé', () => {
     assert.equal(second.room.currentTurn.jokerConstraint, null);
     assert.deepEqual(second.room.reglesUsage.jokerPublic, ['p1']);
   });
+
+  // Le test précédent ne couvre que le partage SUR LE MÊME tour. Celui-ci
+  // aurait attrapé un bug où le compteur ne serait en réalité pas partagé
+  // entre les deux effets d'un tour à l'autre (ex : deux compteurs distincts
+  // par erreur) — vérifie qu'utiliser un effet sur un tour bloque bien
+  // l'AUTRE effet sur un tour ultérieur, dans les deux sens.
+  test('un joueur qui a utilisé un effet sur un tour ne peut pas utiliser l\'autre effet sur un tour ultérieur (compteur partagé, pas par tour)', () => {
+    const bigVerite = Array.from({ length: 10 }, (_, i) => `v${i}`);
+    const bigAction = Array.from({ length: 10 }, (_, i) => `a${i}`);
+    const room = nPlayerRoom(3, { maxTurns: 3, regles: { jokerPublic: true, jokerInverse: true } });
+    const start = startGame(room, { questionPool: pool({ veriteTop: bigVerite, actionTop: bigAction }) });
+
+    // Tour 1 (p1 actif) : p2 utilise l'effet "style".
+    const styled = activateJokerPublic(start.room, { playerId: 'p2', effect: 'style' });
+    const answered1 = submitAnswer(styled.room, { playerId: 'p1', text: 'réponse 1' });
+    const v1a = submitVote(answered1.room, { voterId: 'p2', vote: 'up', turnNumber: 1 });
+    const resolved1 = submitVote(v1a.room, { voterId: 'p3', vote: 'down', turnNumber: 1 });
+    assert.equal(resolved1.room.currentTurn.turnNumber, 2);
+
+    // Tour 2 (p2 actif) : p3 utilise l'effet "question précédente".
+    const inversed = activateJokerPublic(resolved1.room, { playerId: 'p3', effect: 'questionPrecedente' });
+    assert.equal(inversed.room.currentTurn.jokerInverse, true);
+    const answered2 = submitAnswer(inversed.room, { playerId: 'p2', text: 'réponse 2' });
+    const v2a = submitVote(answered2.room, { voterId: 'p1', vote: 'up', turnNumber: 2 });
+    const resolved2 = submitVote(v2a.room, { voterId: 'p3', vote: 'down', turnNumber: 2 });
+    assert.equal(resolved2.room.currentTurn.turnNumber, 3);
+    assert.deepEqual(resolved2.room.reglesUsage.jokerPublic.sort(), ['p2', 'p3']);
+
+    // Tour 3 : p2 (déjà utilisé "style" au tour 1) ne peut pas utiliser
+    // "question précédente" — le compteur est bien partagé entre les effets
+    // d'un tour à l'autre, pas seulement sur le même tour.
+    assert.throws(
+      () => activateJokerPublic(resolved2.room, { playerId: 'p2', effect: 'questionPrecedente' }),
+      (err) => err.code === 'JOKER_DEJA_UTILISE'
+    );
+    // Et réciproquement : p3 (déjà utilisé "question précédente" au tour 2)
+    // ne peut pas utiliser "style".
+    assert.throws(
+      () => activateJokerPublic(resolved2.room, { playerId: 'p3', effect: 'style' }),
+      (err) => err.code === 'JOKER_DEJA_UTILISE'
+    );
+  });
 });
 
 describe('règle G : le bluff assumé (avec mise collective)', () => {
@@ -1450,6 +1492,42 @@ describe('règle G : le bluff assumé (avec mise collective)', () => {
     const answered = submitAnswer(start.room, { playerId: 'p1', text: 'réponse' });
     assert.equal(answered.room.currentTurn, null, 'la partie se termine (maxTurns: 1), aucun tour en cours');
   });
+
+  // Le minuteur de vote (30s réel en direct) résout en appelant simplement
+  // voteTimeout, sans logique différente de la résolution par quorum — testé
+  // ici en appelant directement la fonction plutôt qu'en attendant 30
+  // secondes dans la suite automatisée (déjà vérifié en conditions réelles
+  // avec un vrai minuteur pendant l'audit post-déploiement).
+  test("l'expiration du minuteur de vote résout avec les mises déjà reçues, y compris d'un joueur qui n'a jamais voté", () => {
+    const room = nPlayerRoom(3, { maxTurns: 1, regles: { bluffAssume: true } });
+    const start = startGame(room, {
+      questionPool: pool({ veriteTop: ['v1'], actionTop: ['a1'] }),
+      rng: createSequenceRng([0.1, BUCKET_DONT_CARE, 0.0]),
+    });
+    const answered = submitAnswer(start.room, { playerId: 'p1', text: 'réponse' });
+    const declared = declareBluff(answered.room, { playerId: 'p1' });
+
+    // p2 mise juste et vote ; p3 mise faux mais ne vote jamais (parti sans
+    // prévenir) — le quorum (2/2 à 3 joueurs) n'est donc jamais atteint par
+    // le vote seul.
+    const misedP2 = submitBluffMise(declared.room, { playerId: 'p2', montant: 2, prediction: 'faux' });
+    const misedP3 = submitBluffMise(misedP2.room, { playerId: 'p3', montant: 1, prediction: 'vrai' });
+    const votedP2 = submitVote(misedP3.room, { voterId: 'p2', vote: 'down', turnNumber: 1 });
+    assert.equal(votedP2.room.currentTurn.phase, 'voting', 'le quorum (2/2) n\'est pas atteint avec un seul vote');
+
+    const timedOut = voteTimeout(votedP2.room, { turnNumber: 1 });
+    const resolvedEffect = timedOut.effects.find((e) => e.type === 'TURN_RESOLVED');
+    assert.ok(resolvedEffect, "le tour se résout bien via l'expiration du minuteur, pas de blocage");
+
+    const p2Mise = resolvedEffect.bluffAssume.miseResults.find((r) => r.voterId === 'p2');
+    const p3Mise = resolvedEffect.bluffAssume.miseResults.find((r) => r.voterId === 'p3');
+    assert.equal(p2Mise.guessedRight === true && p2Mise.delta === 2, true, 'la mise juste de p2 compte malgré la résolution par minuteur');
+    assert.equal(p3Mise.guessedRight === false && p3Mise.delta === -1, true, 'la mise fausse de p3 compte aussi, bien qu\'il n\'ait jamais voté');
+
+    const p2Vote = resolvedEffect.bluffAssume.voterResults.find((r) => r.voterId === 'p2');
+    assert.ok(p2Vote, 'le seul vote reçu (p2) compte bien dans la résolution');
+    assert.equal(resolvedEffect.bluffAssume.voterResults.some((r) => r.voterId === 'p3'), false, 'p3 n\'a jamais voté, donc aucun résultat de vote pour lui');
+  });
 });
 
 describe('règle G (variante) : le bluff surprise', () => {
@@ -1569,6 +1647,18 @@ function driveGameToCompletion(room, { maxSteps = 1000 } = {}) {
       const choice = turn.choices[Math.floor(Math.random() * turn.choices.length)];
       current = chooseQuestion(current, { playerId: turn.activePlayerId, questionId: choice.questionId }).room;
     } else if (turn.phase === 'answering') {
+      // Joker du public (style ou question précédente en alternance) : tenté
+      // par un joueur au hasard avant que le tour ne suive son cours normal,
+      // pour l'exercer dès que possible en plus des règles automatiques.
+      if (regles.jokerPublic && !current.currentTurn.jokerActivated && Math.random() < 0.3) {
+        const voter = current.players[Math.floor(Math.random() * current.players.length)];
+        const effect = regles.jokerInverse && Math.random() < 0.5 ? 'questionPrecedente' : 'style';
+        try {
+          current = activateJokerPublic(current, { playerId: voter.id, effect }).room;
+        } catch {
+          // Joker déjà consommé pour ce joueur, ou pas de tour précédent : normal.
+        }
+      }
       if (regles.pariMutuel && turn.pariMutuel && turn.pariMutuel.bet == null && Math.random() < 0.5) {
         const bettorId = current.turnOrder.find((id) => id !== turn.activePlayerId);
         current = submitBet(current, { playerId: bettorId, text: 'pari' }).room;
@@ -1586,10 +1676,30 @@ function driveGameToCompletion(room, { maxSteps = 1000 } = {}) {
     } else if (turn.phase === 'jugement') {
       current = judgeBet(current, { playerId: turn.activePlayerId, verdict: Math.random() < 0.5 ? 'juste' : 'a_cote' }).room;
     } else if (turn.phase === 'voting') {
+      // Bluff assumé : déclaré une fois au plus par tour, avant que les
+      // votes ne closent (sans effet si déjà décidé par un bluff surprise).
+      if (regles.bluffAssume && !current.currentTurn.bluffDeclared && !current.currentTurn.bluffSurprise && Math.random() < 0.3) {
+        try {
+          current = declareBluff(current, { playerId: turn.activePlayerId }).room;
+        } catch {
+          // Déjà déclaré, ou règle indisponible pour ce tour : normal.
+        }
+      }
       const nextVoter = current.players.find(
-        (p) => p.id !== turn.activePlayerId && p.status !== 'left' && !turn.votes[p.id]
+        (p) => p.id !== turn.activePlayerId && p.status !== 'left' && !current.currentTurn.votes[p.id]
       );
       if (nextVoter) {
+        if (regles.bluffAssume && !current.currentTurn.bluffMises[nextVoter.id] && Math.random() < 0.3) {
+          try {
+            current = submitBluffMise(current, {
+              playerId: nextVoter.id,
+              montant: Math.random() < 0.5 ? 1 : 2,
+              prediction: Math.random() < 0.5 ? 'vrai' : 'faux',
+            }).room;
+          } catch {
+            // Auto-mise ou déjà misé : normal.
+          }
+        }
         current = submitVote(current, {
           voterId: nextVoter.id,
           vote: Math.random() < 0.5 ? 'up' : 'down',
@@ -1614,15 +1724,22 @@ function bigPool() {
   });
 }
 
+// Les huit règles (quatre d'origine + les quatre du chantier joker/bluff) —
+// manquait à la liste de tests de l'audit précédent : rien ne les exerçait
+// encore toutes ensemble dans la suite permanente.
 const ALL_REGLES = {
   refusCouteux: true,
   doubleOuRien: true,
   questionRetournee: true,
   tourSurprise: true,
   pariMutuel: true,
+  jokerPublic: true,
+  jokerInverse: true,
+  bluffAssume: true,
+  bluffSurprise: true,
 };
 
-describe('simulations combinant les cinq règles', () => {
+describe('simulations combinant les huit règles', () => {
   test('à 2 joueurs, la partie se termine toujours proprement, quelle que soit la séquence tirée', () => {
     for (let trial = 0; trial < 40; trial++) {
       const room = twoPlayerRoom({ maxTurns: 10, regles: ALL_REGLES });
@@ -1635,7 +1752,7 @@ describe('simulations combinant les cinq règles', () => {
     }
   });
 
-  test('à 5 joueurs, quatre règles actives (pari mutuel réservé à 2) : aucun crash', () => {
+  test('à 5 joueurs, sept règles actives (pari mutuel réservé à 2) : aucun crash', () => {
     for (let trial = 0; trial < 40; trial++) {
       let room = createRoom({ code: 'ABCD', hostId: 'p1', hostPseudo: 'A', maxTurns: 10, regles: ALL_REGLES });
       room = addPlayer(room, { id: 'p2', pseudo: 'B' });

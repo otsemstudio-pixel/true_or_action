@@ -395,6 +395,34 @@ export async function fetchVotesForTurns(db, turnIds) {
   return res.rows;
 }
 
+// room.history (game/turn.js) : contrairement au récapitulatif ci-dessus
+// (agrégats seulement, jamais qui a voté quoi), findBestPreviousVoter (règle
+// C) et findPreviousNormalTurn (règle G) ont besoin de l'identité du votant —
+// d'où une requête séparée plutôt que de réutiliser fetchVotesForTurns.
+export async function fetchVotesForTurnsWithVoter(db, turnIds) {
+  if (turnIds.length === 0) return [];
+  const res = await db.query('SELECT turn_id, voter_id, valeur FROM votes WHERE turn_id = ANY($1)', [turnIds]);
+  return res.rows;
+}
+
+// room.history : tous les tours déjà résolus de la partie, dans l'ordre —
+// c'est ce que game/turn.js accumule au fil de la partie dans room.history,
+// jamais reconstruit depuis la base jusqu'ici (voir sockets/reconstruct.js).
+// Même filtre de statut que fetchTurnsRecap : un tour "en cours" (answering/
+// voting/pré-phase) n'en fait jamais partie, il vit dans currentTurn.
+export async function fetchTurnHistory(db, partieId) {
+  const res = await db.query(
+    `SELECT t.id, t.numero, t.player_id, COALESCE(t.joker_inverse_question_id, t.question_id) AS question_id,
+            q.type, t.reponse, t.points, t.status, t.double_ou_rien, t.returned_from_player_id, t.joker_inverse
+     FROM turns t
+     LEFT JOIN questions q ON q.id = COALESCE(t.joker_inverse_question_id, t.question_id)
+     WHERE t.partie_id = $1 AND t.status IN ('done', 'timeout')
+     ORDER BY t.numero ASC`,
+    [partieId]
+  );
+  return res.rows;
+}
+
 // --- votes ---
 
 export async function insertVote(db, turnId, voterId, vote) {
