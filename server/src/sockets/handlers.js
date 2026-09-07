@@ -277,7 +277,19 @@ function broadcastEffects(io, entry, effects, newAnswerMessage = null) {
 
       case 'START_TIMER':
         setTimer(entry, effect.name, effect.turnNumber, effect.durationMs, () =>
-          runExclusive(entry, () => handleTimerFire(io, entry, effect.name, effect.turnNumber))
+          // Défense en profondeur : handleTimerFire absorbe déjà tout ce
+          // qu'il peut (son propre try/catch interne), ce .catch() ne change
+          // donc rien à ce qui est observable aujourd'hui. Il protège contre
+          // une régression future de handleTimerFire qui oublierait un cas —
+          // sans lui, une telle erreur remonterait en unhandledRejection
+          // silencieux (filet global) plutôt que d'être journalisée
+          // précisément ici, avec le salon/l'effet/le tour en cause.
+          runExclusive(entry, () => handleTimerFire(io, entry, effect.name, effect.turnNumber)).catch((err) => {
+            console.error(
+              `Erreur inattendue au déclenchement du minuteur "${effect.name}" (salon ${entry.room.code}, tour ${effect.turnNumber}) :`,
+              err instanceof Error ? err.stack : err
+            );
+          })
         );
         break;
       case 'CLEAR_TIMER':
