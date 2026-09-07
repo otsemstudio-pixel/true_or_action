@@ -61,6 +61,7 @@ function ConvertirCompteModal({ open, onClose }) {
             autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            hint={t('accueil.motDePasseHint')}
             required
           />
 

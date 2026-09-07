@@ -25,6 +25,7 @@ export default {
     pseudo: 'Nickname',
     email: 'Email',
     motDePasse: 'Password',
+    motDePasseHint: 'At least 8 characters.',
     sInscrire: 'Sign up',
     seConnecter: 'Log in',
     dejaUnCompte: 'Already have an account?',

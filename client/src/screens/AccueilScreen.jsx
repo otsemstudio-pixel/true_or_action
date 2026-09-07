@@ -107,6 +107,7 @@ function AccueilScreen() {
               autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
               value={form.password}
               onChange={setField('password')}
+              hint={mode === 'register' ? t('accueil.motDePasseHint') : undefined}
               required
             />
           </>

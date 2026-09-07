@@ -25,6 +25,7 @@ export default {
     pseudo: 'Pseudo',
     email: 'Email',
     motDePasse: 'Mot de passe',
+    motDePasseHint: 'Au moins 8 caractères.',
     sInscrire: "S'inscrire",
     seConnecter: 'Se connecter',
     dejaUnCompte: 'Déjà un compte ?',
