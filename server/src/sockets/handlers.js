@@ -12,6 +12,7 @@ import {
   updateCategorie,
   updateLangue,
   updateRegles,
+  chooseCarteJoker,
   effectiveRegles,
   addPlayer,
   removePlayer,
@@ -750,6 +751,26 @@ export function registerSocketHandlers(io) {
 
         io.to(entry.room.code).emit('room:regles', { regles: effectiveRegles(entry.room) });
         ack?.({ ok: true, regles: effectiveRegles(entry.room) });
+      } catch (err) {
+        ack?.(errorResponse(err));
+      }
+    });
+
+    // Chaque joueur choisit pour lui-même (pas une action réservée à l'hôte,
+    // contrairement aux autres réglages du salon d'attente ci-dessus) : libre
+    // de changer d'avis tant que la partie n'a pas démarré (voir room.js).
+    socket.on('room:choisirCarteJoker', async (payload, ack) => {
+      try {
+        const entry = requireEntry(socket);
+        const carteJokerId = payload?.carteJokerId;
+        await runExclusive(entry, async () => {
+          const updatedRoom = chooseCarteJoker(entry.room, { playerId: socket.data.playerId, carteJokerId });
+          await repo.updatePlayerCarteJoker(pool, entry.dbRoomId, Number(socket.data.playerId), carteJokerId);
+          entry.room = updatedRoom;
+        });
+
+        broadcastPlayers(io, entry);
+        ack?.({ ok: true });
       } catch (err) {
         ack?.(errorResponse(err));
       }

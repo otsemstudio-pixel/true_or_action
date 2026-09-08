@@ -23,6 +23,13 @@
   --color-success: #4ade80;
   --color-warning: #f5c451;
 
+  /* Cartes joker : une teinte par catégorie (jamais par joker individuel,
+     voir JokerCard.jsx) — chaque nouvelle catégorie ajoute son propre trio
+     ici en suivant exactement ce même nommage, sans toucher aux cartes elles-mêmes. */
+  --color-joker-regularite: #9b8cfb;
+  --color-joker-regularite-soft: rgba(155, 140, 251, 0.15);
+  --color-joker-regularite-wash: rgba(155, 140, 251, 0.08);
+
   --color-overlay: rgba(0, 0, 0, 0.5);
   --color-spinner-track: rgba(244, 244, 246, 0.25);
 
@@ -88,6 +95,10 @@
   --color-danger-bg: #ffe1e8;
   --color-success: #15803d;
   --color-warning: #b45309;
+
+  --color-joker-regularite: #4338ca;
+  --color-joker-regularite-soft: #e6e1fd;
+  --color-joker-regularite-wash: #f3f0fe;
 
   --color-overlay: rgba(23, 20, 15, 0.4);
   --color-spinner-track: rgba(23, 20, 15, 0.15);
@@ -1680,4 +1691,219 @@ input {
   font-weight: 700;
   color: var(--color-action);
   font-variant-numeric: tabular-nums;
+}
+
+/* Cartes joker (voir JokerCard.jsx) : générique pour les 50 jokers à venir,
+   ne dépend que de --joker-color (posée en inline par le composant à partir
+   du token de catégorie) et du texte fourni en props. */
+
+.joker-card {
+  position: relative;
+  width: 150px;
+  height: 210px;
+  flex: 0 0 auto;
+  perspective: 900px;
+  cursor: pointer;
+  outline: none;
+}
+
+.joker-card:focus-visible .joker-card-face--front {
+  border-color: var(--joker-color);
+}
+
+.joker-card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform var(--transition-base);
+  transform-style: preserve-3d;
+}
+
+.joker-card-inner--flipped {
+  transform: rotateY(180deg);
+}
+
+.joker-card-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-3);
+}
+
+.joker-card-face--back {
+  transform: rotateY(180deg);
+  justify-content: center;
+  background: var(--joker-color-wash, var(--color-surface));
+}
+
+.joker-card-index {
+  position: absolute;
+  font-weight: 700;
+  font-size: var(--text-base);
+  color: var(--joker-color);
+  line-height: 1;
+}
+
+.joker-card-index--top {
+  top: var(--space-2);
+  left: var(--space-3);
+}
+
+.joker-card-index--bottom {
+  bottom: var(--space-2);
+  right: var(--space-3);
+  transform: rotate(180deg);
+}
+
+.joker-card-illustration {
+  width: 60px;
+  height: 60px;
+  color: var(--joker-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: auto 0 var(--space-3);
+}
+
+.joker-card-illustration svg {
+  width: 100%;
+  height: 100%;
+}
+
+.joker-card-nom {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-align: center;
+  color: var(--color-text);
+  line-height: 1.2;
+}
+
+.joker-card-effet {
+  font-size: var(--text-sm);
+  text-align: center;
+  color: var(--color-text);
+}
+
+/* Sélection (salon d'attente, Phase 3) : absent en simple consultation
+   (galerie du menu), où onChoose n'est jamais fourni. */
+.joker-card--chosen .joker-card-face {
+  border-color: var(--joker-color);
+  border-width: 2px;
+}
+
+.joker-card-choose-btn {
+  margin-top: var(--space-2);
+  min-height: var(--tap-min);
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--joker-color);
+  background: transparent;
+  color: var(--joker-color);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Aperçu au survol (desktop uniquement, jamais en remplacement du clic — le
+   survol n'existe pas au tactile, voir le media query hover:hover). */
+.joker-card-hint {
+  display: none;
+}
+
+@media (hover: hover) {
+  .joker-card-face--front:hover .joker-card-hint {
+    display: block;
+    position: absolute;
+    inset: auto var(--space-2) var(--space-2) var(--space-2);
+    background: var(--color-surface-raised);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: var(--space-2);
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    z-index: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .joker-card {
+    width: 128px;
+    height: 180px;
+  }
+
+  .joker-card-illustration {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+/* Galerie de jokers : une section par catégorie. Desktop = grille qui
+   s'enroule (flex-wrap) ; mobile = rangée défilante avec accroche (scroll-snap)
+   et indicateur de position — même DOM dans les deux cas, seule la mise en
+   page change via media query. */
+
+.joker-gallery {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.joker-categorie {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.joker-categorie-titre {
+  font-size: var(--text-lg);
+  font-weight: 700;
+}
+
+.joker-categorie-scroller {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.joker-categorie-dots {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .joker-categorie-scroller {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: var(--space-2);
+    margin: 0 calc(var(--space-4) * -1);
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+
+  .joker-categorie-scroller > * {
+    scroll-snap-align: start;
+  }
+
+  .joker-categorie-dots {
+    display: flex;
+    justify-content: center;
+    gap: var(--space-2);
+  }
+}
+
+.joker-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-border);
+}
+
+.joker-dot--active {
+  background: var(--color-text-muted);
 }

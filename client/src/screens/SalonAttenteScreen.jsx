@@ -8,6 +8,7 @@ import TextField from '../components/TextField.jsx';
 import ErrorBanner from '../components/ErrorBanner.jsx';
 import Tutoriel from '../components/Tutoriel.jsx';
 import ReglesActives, { REGLE_KEYS } from '../components/ReglesActives.jsx';
+import JokerGallery from '../components/JokerGallery.jsx';
 import { NIVEAUX } from '../lib/niveau.js';
 import { ANSWER_SEC_OPTIONS } from '../lib/timers.js';
 import { markTutorielSeen } from '../lib/tutoriel.js';
@@ -33,6 +34,7 @@ function SalonAttenteScreen() {
     updateCategorie,
     updateRoomLangue,
     updateRoomRegles,
+    choisirCarteJoker,
     startGame,
   } = useRoom();
   const { t } = useI18n();
@@ -57,7 +59,22 @@ function SalonAttenteScreen() {
   const [error, setError] = useState(null);
   const [tutorielOpen, setTutorielOpen] = useState(false);
 
-  const canStart = room.players.length >= MIN_PLAYERS;
+  const myPlayer = room.players.find((p) => p.id === String(user.id));
+  const carteJokerActive = room.regles.carteJoker;
+  const carteJokerReady = !carteJokerActive || room.players.every((p) => p.carteJoker != null);
+  const canStart = room.players.length >= MIN_PLAYERS && carteJokerReady;
+
+  // Pas d'état "busy" ici : choisir/changer d'avis est une action instantanée
+  // et idempotente (voir room.js chooseCarteJoker), un double-clic n'a pas de
+  // conséquence à protéger contrairement aux autres réglages de ce fichier.
+  const handleChooseCarteJoker = async (carteJokerId) => {
+    setError(null);
+    try {
+      await choisirCarteJoker(carteJokerId);
+    } catch (err) {
+      setError(translateError(t, err));
+    }
+  };
 
   const applySettings = async (nextMode, value) => {
     setError(null);
@@ -426,6 +443,29 @@ function SalonAttenteScreen() {
           <ReglesActives regles={room.regles} />
         )}
       </div>
+
+      {carteJokerActive && (
+        <div className="card">
+          <h2>{t('jokers.choisirVotreCarte')}</h2>
+          <p className="menu-item-hint">{t('jokers.choisirVotreCarteHint')}</p>
+          <JokerGallery selectedCarteJokerId={myPlayer?.carteJoker} onChoose={handleChooseCarteJoker} />
+          <ul className="player-list">
+            {room.players.map((p) => (
+              <li key={p.id} className="player-row">
+                <span className="player-name">{p.pseudo}</span>
+                <span className="menu-item-hint">
+                  {p.carteJoker != null ? t('jokers.aChoisiSaCarte') : t('jokers.enAttenteDeChoix')}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {!carteJokerReady && (
+            <p className="menu-item-hint">
+              {t('jokers.enAttenteDesCartes', { count: room.players.filter((p) => p.carteJoker == null).length })}
+            </p>
+          )}
+        </div>
+      )}
 
       {isHost ? (
         <Button variant="dark" block arrow busy={busy} disabled={!canStart} onClick={handleStart}>

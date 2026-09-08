@@ -53,6 +53,46 @@ export default {
     creerUnCompteHint: 'Add an email and password to find your account on another device. Everything is kept: nickname, games, questions.',
   },
 
+  jokers: {
+    titre: 'Jokers',
+    choisir: 'Choose',
+    choisi: 'Chosen ✓',
+    choisirVotreCarte: 'Choose your joker card',
+    choisirVotreCarteHint: "Tap a card to see its effect, then confirm your pick — you can change it until the game starts.",
+    enAttenteDesCartes: {
+      one: 'Waiting for {{count}} player.',
+      other: 'Waiting for {{count}} players.',
+    },
+    toutLeMondeAChoisi: 'Everyone has chosen their card.',
+    aChoisiSaCarte: 'Has chosen a card',
+    enAttenteDeChoix: 'Has not chosen yet',
+    categories: {
+      regularite: 'Regularity',
+    },
+    regularite: {
+      leFidele: {
+        nom: 'The faithful',
+        effet: 'Three sincere turns in a row: the next turn earns +1 point automatically.',
+      },
+      leMetronome: {
+        nom: 'The metronome',
+        effet: 'Five turns played without ever passing: +2 points immediately, then it resets.',
+      },
+      lIncrevable: {
+        nom: 'The unbreakable',
+        effet: 'The very first time "The costly refusal" makes you lose points, the loss is cancelled.',
+      },
+      leVeteran: {
+        nom: 'The veteran',
+        effet: 'Every 5 turns of the game, +1 point automatically as long as you are still in play.',
+      },
+      leRituel: {
+        nom: 'The ritual',
+        effet: 'Three surprise turns where you answer first: +1 point, then it resets.',
+      },
+    },
+  },
+
   moderation: {
     titre: 'Moderation',
     ongletEnAttente: 'Pending',
@@ -174,6 +214,11 @@ export default {
       nom: 'The surprise bluff',
       description:
         "A variant of the owned bluff (about one turn in five, like the surprise round): the game alone decides, by a random draw, whether the active player lied — they don't know in advance either.",
+    },
+    carteJoker: {
+      nom: 'Joker cards',
+      description:
+        'Each player picks a joker card in the waiting room, before launch — a discreet power active for the whole game, never changed once it starts.',
     },
   },
 
@@ -384,6 +429,8 @@ export default {
     REPLY_TARGET_NOT_FOUND: 'Quoted message not found.',
     REGLE_DISABLED: 'This rule is not enabled in this room.',
     INVALID_REGLE: 'Invalid rule.',
+    INVALID_CARTE_JOKER: 'Invalid joker card.',
+    CARTE_JOKER_MANQUANTE: 'Every player must choose a joker card before starting the game.',
     QUESTION_RETOURNEE_INDISPONIBLE: 'Cannot return the question on this turn.',
     JOKER_DEJA_UTILISE: "You've already used your joker this game.",
     JOKER_INVERSE_INDISPONIBLE: 'No previous turn to reuse right now.',

@@ -537,6 +537,10 @@ export function RoomProvider({ children }) {
     return res;
   }, []);
 
+  // Pas de mise à jour locale immédiate : le serveur rediffuse room:players
+  // (déjà écouté ci-dessus) à tout le salon, y compris à soi-même.
+  const choisirCarteJoker = useCallback((carteJokerId) => emitWithAck('room:choisirCarteJoker', { carteJokerId }), []);
+
   const startGame = useCallback(() => emitWithAck('game:start', {}), []);
 
   const restartGame = useCallback(() => emitWithAck('game:rematch', {}), []);
@@ -599,6 +603,7 @@ export function RoomProvider({ children }) {
         updateCategorie,
         updateRoomLangue,
         updateRoomRegles,
+        choisirCarteJoker,
         startGame,
         restartGame,
         sendAnswer,

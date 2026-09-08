@@ -12,6 +12,7 @@ import Tutoriel from '../components/Tutoriel.jsx';
 import ConvertirCompteModal from '../components/ConvertirCompteModal.jsx';
 import MesQuestionsModal from '../components/MesQuestionsModal.jsx';
 import AdminModerationModal from '../components/AdminModerationModal.jsx';
+import JokersGalleryModal from '../components/JokersGalleryModal.jsx';
 import { hasTutorielSeen, shouldShowNouveautes, markTutorielSeen } from '../lib/tutoriel.js';
 
 const DEFAULT_MAX_TURNS = 10;
@@ -28,6 +29,7 @@ function MenuScreen() {
   const [convertOpen, setConvertOpen] = useState(false);
   const [mesQuestionsOpen, setMesQuestionsOpen] = useState(false);
   const [moderationOpen, setModerationOpen] = useState(false);
+  const [jokersOpen, setJokersOpen] = useState(false);
 
   // Proposé automatiquement une seule fois avant la première partie (vue
   // complète), puis reproposé sous forme de "Nouveautés" si des sections ont
@@ -146,10 +148,17 @@ function MenuScreen() {
         </div>
       )}
 
+      <div className="menu-block menu-block--muted">
+        <Button variant="ghost" block onClick={() => setJokersOpen(true)}>
+          {t('jokers.titre')}
+        </Button>
+      </div>
+
       <Tutoriel open={tutorielOpen} initialView={tutorielView} onClose={closeTutoriel} />
       <ConvertirCompteModal open={convertOpen} onClose={() => setConvertOpen(false)} />
       <MesQuestionsModal open={mesQuestionsOpen} onClose={() => setMesQuestionsOpen(false)} />
       {user.isAdmin && <AdminModerationModal open={moderationOpen} onClose={() => setModerationOpen(false)} />}
+      <JokersGalleryModal open={jokersOpen} onClose={() => setJokersOpen(false)} />
     </div>
   );
 }

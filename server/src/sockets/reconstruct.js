@@ -15,6 +15,7 @@ export async function loadRoomEntryFromDb(roomRow) {
     score: p.score,
     status: p.state,
     isGuest: Boolean(p.is_guest),
+    carteJoker: p.carte_joker,
   }));
   const turnOrder = dbPlayers.filter((p) => p.state !== 'left').map((p) => String(p.user_id));
 

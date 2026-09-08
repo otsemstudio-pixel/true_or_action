@@ -53,6 +53,46 @@ export default {
     creerUnCompteHint: 'Ajoutez un email et un mot de passe pour retrouver votre compte sur un autre appareil. Tout est conservé : pseudo, parties, questions.',
   },
 
+  jokers: {
+    titre: 'Jokers',
+    choisir: 'Choisir',
+    choisi: 'Choisi ✓',
+    choisirVotreCarte: 'Choisissez votre carte joker',
+    choisirVotreCarteHint: "Tapez une carte pour voir son effet, puis validez votre choix — vous pourrez en changer tant que la partie n'a pas commencé.",
+    enAttenteDesCartes: {
+      one: 'En attente de {{count}} joueur.',
+      other: 'En attente de {{count}} joueurs.',
+    },
+    toutLeMondeAChoisi: 'Tout le monde a choisi sa carte.',
+    aChoisiSaCarte: 'A choisi sa carte',
+    enAttenteDeChoix: "N'a pas encore choisi",
+    categories: {
+      regularite: 'Régularité',
+    },
+    regularite: {
+      leFidele: {
+        nom: 'Le fidèle',
+        effet: 'Trois tours sincères d’affilée : le tour suivant rapporte +1 point automatique.',
+      },
+      leMetronome: {
+        nom: 'Le métronome',
+        effet: 'Cinq tours joués sans jamais passer : +2 points immédiats, puis on repart de zéro.',
+      },
+      lIncrevable: {
+        nom: 'L’increvable',
+        effet: 'La toute première fois que "Le refus qui coûte" vous fait perdre des points, la perte est annulée.',
+      },
+      leVeteran: {
+        nom: 'Le vétéran',
+        effet: 'Tous les 5 tours de la partie, +1 point automatique tant que vous êtes encore en jeu.',
+      },
+      leRituel: {
+        nom: 'Le rituel',
+        effet: 'Trois tours surprise où vous répondez le premier : +1 point, puis on repart de zéro.',
+      },
+    },
+  },
+
   moderation: {
     titre: 'Modération',
     ongletEnAttente: 'En attente',
@@ -176,6 +216,11 @@ export default {
       nom: 'Le bluff surprise',
       description:
         "Variante du bluff assumé (environ un tour sur cinq, comme le tour surprise) : le jeu décide seul, par tirage, si le joueur actif a menti — lui non plus ne le sait pas à l'avance.",
+    },
+    carteJoker: {
+      nom: 'Les cartes joker',
+      description:
+        'Chaque joueur choisit une carte joker en salon d’attente, avant le lancement — un pouvoir discret actif toute la partie, jamais changé en cours de route.',
     },
   },
 
@@ -389,6 +434,8 @@ export default {
     REPLY_TARGET_NOT_FOUND: 'Message cité introuvable.',
     REGLE_DISABLED: "Cette règle n'est pas activée dans ce salon.",
     INVALID_REGLE: 'Règle invalide.',
+    INVALID_CARTE_JOKER: 'Carte joker invalide.',
+    CARTE_JOKER_MANQUANTE: 'Chaque joueur doit choisir une carte joker avant de lancer la partie.',
     QUESTION_RETOURNEE_INDISPONIBLE: "Impossible de retourner la question sur ce tour.",
     JOKER_DEJA_UTILISE: 'Vous avez déjà utilisé votre joker cette partie.',
     JOKER_INVERSE_INDISPONIBLE: 'Aucun tour précédent à réutiliser pour le moment.',

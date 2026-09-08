@@ -157,8 +157,19 @@ export async function updatePlayerScore(db, roomId, userId, score) {
   ]);
 }
 
+export async function updatePlayerCarteJoker(db, roomId, userId, carteJoker) {
+  await db.query('UPDATE room_players SET carte_joker = $1 WHERE room_id = $2 AND user_id = $3', [
+    carteJoker,
+    roomId,
+    userId,
+  ]);
+}
+
+// Une revanche remet aussi la carte joker à zéro (voir room.js restartRoom,
+// même geste côté mémoire) : un joueur re-choisit à chaque nouvelle partie,
+// jamais reconduit automatiquement.
 export async function resetRoomPlayersScores(db, roomId) {
-  await db.query('UPDATE room_players SET score = 0 WHERE room_id = $1', [roomId]);
+  await db.query('UPDATE room_players SET score = 0, carte_joker = NULL WHERE room_id = $1', [roomId]);
 }
 
 export async function deleteLeftPlayers(db, roomId) {
@@ -202,7 +213,7 @@ export async function fetchCurrentPartie(db, roomId) {
 
 export async function fetchRoomPlayers(db, roomId) {
   const res = await db.query(
-    `SELECT rp.user_id, rp.ordre, rp.score, rp.state, rp.last_seen_at, u.pseudo, u.is_guest
+    `SELECT rp.user_id, rp.ordre, rp.score, rp.state, rp.last_seen_at, rp.carte_joker, u.pseudo, u.is_guest
      FROM room_players rp JOIN users u ON u.id = rp.user_id
      WHERE rp.room_id = $1 ORDER BY rp.ordre ASC`,
     [roomId]
@@ -413,7 +424,8 @@ export async function fetchVotesForTurnsWithVoter(db, turnIds) {
 export async function fetchTurnHistory(db, partieId) {
   const res = await db.query(
     `SELECT t.id, t.numero, t.player_id, COALESCE(t.joker_inverse_question_id, t.question_id) AS question_id,
-            q.type, t.reponse, t.points, t.status, t.double_ou_rien, t.returned_from_player_id, t.joker_inverse
+            q.type, t.reponse, t.points, t.status, t.double_ou_rien, t.returned_from_player_id, t.joker_inverse,
+            t.bluff_declare
      FROM turns t
      LEFT JOIN questions q ON q.id = COALESCE(t.joker_inverse_question_id, t.question_id)
      WHERE t.partie_id = $1 AND t.status IN ('done', 'timeout')

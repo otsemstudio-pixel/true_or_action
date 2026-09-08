@@ -9,6 +9,7 @@ export {
   updateCategorie,
   updateLangue,
   updateRegles,
+  chooseCarteJoker,
   addPlayer,
   removePlayer,
   restartRoom,

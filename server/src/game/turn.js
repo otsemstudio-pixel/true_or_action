@@ -12,6 +12,14 @@ import {
   BLUFF_MISE_MONTANTS,
 } from './constants.js';
 import { canStart, getPlayer, excludePlayer, effectiveRegles } from './room.js';
+import {
+  JOKER_IDS,
+  fideleBonusDueForNextTurn,
+  metronomeStreakBefore,
+  hasUsedIncrevable,
+  applyVeteranBonus,
+  rituelStreakBefore,
+} from './jokers.js';
 
 const TOP_NIVEAU_WEIGHT = 0.6;
 
@@ -24,6 +32,9 @@ export function startGame(room, { questionPool, rng = defaultRng }) {
     throw new GameError('CANNOT_START', `Il faut au moins ${PLAYERS.min} joueurs pour lancer la partie`, {
       min: PLAYERS.min,
     });
+  }
+  if (effectiveRegles(room).carteJoker && room.players.some((p) => p.carteJoker == null)) {
+    throw new GameError('CARTE_JOKER_MANQUANTE', 'Chaque joueur doit choisir une carte joker avant de lancer la partie');
   }
 
   const { maxTurns } = room.settings;
@@ -279,15 +290,42 @@ export function submitPass(room, { playerId, rng = defaultRng }) {
   // le malus du refus ne s'applique pas") ni sa conséquence habituelle
   // (choix parmi 3 au tour suivant) — seul un refus "à froid" les déclenche.
   const afterDoubleOuRien = Boolean(room.currentTurn.doubleOuRien);
-  const points = afterDoubleOuRien ? 0 : REGLES.refusMalus;
+  let points = afterDoubleOuRien ? 0 : REGLES.refusMalus;
+
+  // Jokers, catégorie Régularité (voir jokers.js) : un joueur ne porte
+  // jamais qu'un seul joker à la fois, les deux branches ci-dessous ne
+  // s'appliquent donc jamais simultanément au même joueur.
+  const activePlayer = getPlayer(room, playerId);
+  let increvableUsed = false;
+  if (activePlayer?.carteJoker === JOKER_IDS.LINCREVABLE && points < 0 && !hasUsedIncrevable(room.history, playerId)) {
+    points = 0;
+    increvableUsed = true;
+  }
+  if (activePlayer?.carteJoker === JOKER_IDS.LE_FIDELE && fideleBonusDueForNextTurn(room.history, playerId)) {
+    points += 1;
+  }
 
   const room2 = {
     ...room,
-    players: room.players.map((p) => (p.id === playerId ? { ...p, score: p.score + points } : p)),
+    players: applyVeteranBonus(
+      room.players.map((p) => (p.id === playerId ? { ...p, score: p.score + points } : p)),
+      room.history.length + 1
+    ),
     currentTurn: { ...room.currentTurn, phase: 'resolved', answer: null },
     history: [
       ...room.history,
-      { turnNumber, playerId, type: room.currentTurn.type, questionId: room.currentTurn.questionId, answer: null, votes: {}, points, mode: 'normal', refused: true },
+      {
+        turnNumber,
+        playerId,
+        type: room.currentTurn.type,
+        questionId: room.currentTurn.questionId,
+        answer: null,
+        votes: {},
+        points,
+        mode: 'normal',
+        refused: true,
+        increvableUsed,
+      },
     ],
     forceQuestionChoice: !afterDoubleOuRien,
   };
@@ -650,7 +688,8 @@ export function submitSurpriseAnswer(room, { playerId, text }) {
 
   const turnNumber = room.currentTurn.turnNumber;
   const answers = { ...room.currentTurn.answers, [playerId]: trimmed };
-  const room2 = { ...room, currentTurn: { ...room.currentTurn, answers } };
+  const answerOrder = [...room.currentTurn.answerOrder, playerId];
+  const room2 = { ...room, currentTurn: { ...room.currentTurn, answers, answerOrder } };
   const effects = [{ type: 'SURPRISE_ANSWER_SUBMITTED', turnNumber, playerId }];
 
   const allAnswered = room.currentTurn.activePlayerIds.every((id) => answers[id] != null);
@@ -733,17 +772,36 @@ function resolveSurpriseTurn(room, rng) {
   const maxVotes = answeredIds.length > 0 ? Math.max(...answeredIds.map((id) => votesRecus[id] ?? 0)) : 0;
   const winnerIds = maxVotes > 0 ? answeredIds.filter((id) => votesRecus[id] === maxVotes) : [];
 
+  // Le rituel (voir jokers.js) : premier nom de answerOrder, jamais un
+  // horodatage — seul contexte où "premier à répondre" a un sens réel
+  // (un tour normal n'a qu'un seul répondant, toujours "premier" par
+  // construction).
+  const firstResponderId = turn.answerOrder[0] ?? null;
+
   const results = turn.activePlayerIds.map((id) => {
     const answered = turn.answers[id] != null;
     const isWinner = winnerIds.includes(id);
-    const points = isWinner ? REGLES.tourSurprisePointsGagnant : answered ? REGLES.tourSurprisePointsParticipant : 0;
+    let points = isWinner ? REGLES.tourSurprisePointsGagnant : answered ? REGLES.tourSurprisePointsParticipant : 0;
+
+    const player = getPlayer(room, id);
+    if (
+      player?.carteJoker === JOKER_IDS.LE_RITUEL &&
+      id === firstResponderId &&
+      rituelStreakBefore(room.history, id) + 1 === 3
+    ) {
+      points += 1;
+    }
+
     return { playerId: id, answer: turn.answers[id] ?? null, votesRecus: votesRecus[id] ?? 0, points };
   });
 
-  const players = room.players.map((p) => {
-    const result = results.find((r) => r.playerId === p.id);
-    return result ? { ...p, score: p.score + result.points } : p;
-  });
+  const players = applyVeteranBonus(
+    room.players.map((p) => {
+      const result = results.find((r) => r.playerId === p.id);
+      return result ? { ...p, score: p.score + result.points } : p;
+    }),
+    room.history.length + 1
+  );
 
   const room2 = {
     ...room,
@@ -751,7 +809,7 @@ function resolveSurpriseTurn(room, rng) {
     currentTurn: { ...turn, phase: 'resolved' },
     history: [
       ...room.history,
-      { turnNumber, mode: 'surprise', questionId: turn.questionId, type: turn.type, results, votes: {} },
+      { turnNumber, mode: 'surprise', questionId: turn.questionId, type: turn.type, results, votes: {}, firstResponderId },
     ],
   };
 
@@ -1114,6 +1172,11 @@ function startSurpriseTurn(room, rng) {
       phase: 'answering',
       activePlayerIds: [...room.turnOrder],
       answers: {},
+      // Ordre d'arrivée des réponses (Le rituel, voir jokers.js) : un simple
+      // tableau plutôt qu'un horodatage — turn.js n'accède jamais à l'heure
+      // réelle, l'ordre d'appel des fonctions pures suffit et reste
+      // déterministe pour les tests.
+      answerOrder: [],
       votes: {},
     },
   };
@@ -1204,6 +1267,23 @@ function resolveTurn(room, rng, { pariMutuelVerdict = null } = {}) {
     }
   }
 
+  // Jokers, catégorie Régularité (voir jokers.js) : évalués sur `points`
+  // déjà final (après bonus de votes, double ou rien et multiplicateur de
+  // bluff), avant qu'il ne soit appliqué au score — le bonus fait donc
+  // partie intégrante du gain du tour, comme demandé ("en plus de ses gains
+  // normaux"). Un joueur ne porte jamais qu'un seul joker : les deux
+  // branches ci-dessous ne s'appliquent jamais en même temps.
+  const activeJokerPlayer = getPlayer(room, turn.activePlayerId);
+  if (activeJokerPlayer?.carteJoker === JOKER_IDS.LE_FIDELE && fideleBonusDueForNextTurn(room.history, turn.activePlayerId)) {
+    points += 1;
+  }
+  if (
+    activeJokerPlayer?.carteJoker === JOKER_IDS.LE_METRONOME &&
+    metronomeStreakBefore(room.history, turn.activePlayerId) + 1 === 5
+  ) {
+    points += 2;
+  }
+
   let players = room.players.map((p) =>
     p.id === turn.activePlayerId ? { ...p, score: p.score + points } : p
   );
@@ -1244,6 +1324,8 @@ function resolveTurn(room, rng, { pariMutuelVerdict = null } = {}) {
     jokerInverse: Boolean(turn.jokerInverse),
     bluffAssume: bluffResult,
   };
+
+  players = applyVeteranBonus(players, room.history.length + 1);
 
   let room2 = {
     ...room,

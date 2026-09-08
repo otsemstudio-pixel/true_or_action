@@ -136,6 +136,38 @@ describe('buildHistoryFromRows : reconstruction de room.history depuis la base',
   test('sans tour résolu (partie qui vient de commencer), reconstruit un historique vide sans planter', () => {
     assert.deepEqual(buildHistoryFromRows([], [], []), []);
   });
+
+  // Trouvé en construisant Le fidèle (jokers.js), qui a besoin de savoir si
+  // un tour PASSÉ était sincère bien après sa résolution : bluffAssume était
+  // toujours remis à null ici, quel que soit ce qui s'était réellement passé
+  // — un bluff déclaré redevenait "sincère" à la moindre reconnexion, ce qui
+  // aurait faussé silencieusement le compteur. Seul .declared est reconstruit
+  // (fooled/voterResults/miseResults restent hors de portée, jamais relus
+  // ailleurs dans l'app depuis l'historique — vérifié avant ce correctif).
+  test('bluffAssume.declared survit à une reconnexion sur un tour normal passé, pour Le fidèle (jokers.js)', () => {
+    const bluffDeclaredRow = {
+      id: 901,
+      numero: 1,
+      player_id: 101,
+      question_id: 'v0',
+      type: 'verite',
+      reponse: 'réponse',
+      points: 2,
+      status: 'done',
+      double_ou_rien: false,
+      returned_from_player_id: null,
+      joker_inverse: false,
+      bluff_declare: true,
+    };
+    const sincereRow = { ...bluffDeclaredRow, id: 902, numero: 2, bluff_declare: false };
+    const neverPersistedRow = { ...bluffDeclaredRow, id: 903, numero: 3 };
+    delete neverPersistedRow.bluff_declare;
+
+    const history = buildHistoryFromRows([bluffDeclaredRow, sincereRow, neverPersistedRow], [], []);
+    assert.equal(history[0].bluffAssume?.declared, true, 'un bluff réellement déclaré doit rester détectable après reconstruction');
+    assert.equal(history[1].bluffAssume?.declared, undefined, 'un tour sincère ne doit jamais réapparaître comme un bluff après reconstruction');
+    assert.equal(history[2].bluffAssume, null, 'colonne absente (règle jamais activée) : traité comme sincère, jamais une erreur');
+  });
 });
 
 // Manquait à la liste de tests de l'audit précédent : une reconnexion

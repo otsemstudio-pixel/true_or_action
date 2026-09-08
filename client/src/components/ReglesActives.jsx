@@ -10,6 +10,7 @@ export const REGLE_KEYS = [
   'jokerInverse',
   'bluffAssume',
   'bluffSurprise',
+  'carteJoker',
 ];
 
 // Résumé compact des règles actives — visible par tous les joueurs, dans le

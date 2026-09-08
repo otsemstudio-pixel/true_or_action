@@ -2,6 +2,7 @@ import { GameError } from './errors.js';
 import { PLAYERS, TIMERS } from './constants.js';
 import { SUPPORTED_LANGUES } from '../config/langues.js';
 import { SUPPORTED_CATEGORIES, DEFAULT_CATEGORIE } from '../config/categories.js';
+import { JOKER_IDS } from './jokers.js';
 
 const NIVEAUX = [1, 2, 3];
 const EMPTY_QUESTION_POOL = {
@@ -78,6 +79,12 @@ export const DEFAULT_REGLES = {
   jokerInverse: false,
   bluffAssume: false,
   bluffSurprise: false,
+  // Système de cartes joker (prompt dédié, sans rapport avec jokerPublic/
+  // jokerInverse ci-dessus — "le joker du public", règle F — d'où le nom
+  // "carteJoker" plutôt que "joker" tout court, pour ne jamais confondre les
+  // deux dans cette même liste). Un joueur choisit sa carte en salon
+  // d'attente (voir chooseCarteJoker) tant que cette règle est active.
+  carteJoker: false,
 };
 
 function validateRegles(regles, current = DEFAULT_REGLES) {
@@ -145,7 +152,10 @@ export function createRoom({
     langue: validateLangue(langue),
     maxPlayers: validateMaxPlayers(maxPlayers),
     answerSec: validateAnswerSec(answerSec),
-    players: [{ id: hostId, pseudo: hostPseudo, score: 0, status: 'active', isGuest: Boolean(hostIsGuest) }],
+    // joker : null tant que l'acquisition en début de partie n'est pas
+    // construite (voir Phase 3 du prompt jokers) — les effets de Phase 2
+    // n'ont besoin que du champ, pas encore du mécanisme qui le remplit.
+    players: [{ id: hostId, pseudo: hostPseudo, score: 0, status: 'active', isGuest: Boolean(hostIsGuest), carteJoker: null }],
     turnOrder: [],
     currentTurnIndex: -1,
     turnNumber: 0,
@@ -248,6 +258,28 @@ export function updateRegles(room, regles) {
   return { ...room, regles: validateRegles(regles, room.regles) };
 }
 
+// Libre tant que la partie n'a pas démarré (pas de changement possible "en
+// cours de route", voir jokers.js) : un joueur peut changer d'avis autant de
+// fois qu'il veut avant que l'hôte ne lance la partie.
+export function chooseCarteJoker(room, { playerId, carteJokerId }) {
+  if (room.status !== 'waiting') {
+    throw new GameError('ROOM_NOT_JOINABLE', 'Impossible de choisir une carte joker après le lancement');
+  }
+  if (!room.regles.carteJoker) {
+    throw new GameError('REGLE_DISABLED', 'Les cartes joker ne sont pas activées dans ce salon');
+  }
+  if (!getPlayer(room, playerId)) {
+    throw new GameError('PLAYER_NOT_FOUND', 'Joueur introuvable dans le salon');
+  }
+  if (!Object.values(JOKER_IDS).includes(carteJokerId)) {
+    throw new GameError('INVALID_CARTE_JOKER', 'Carte joker invalide');
+  }
+  return {
+    ...room,
+    players: room.players.map((p) => (p.id === playerId ? { ...p, carteJoker: carteJokerId } : p)),
+  };
+}
+
 export function addPlayer(room, { id, pseudo, isGuest = false }) {
   if (room.status !== 'waiting') {
     throw new GameError('ROOM_NOT_JOINABLE', 'La partie a déjà commencé');
@@ -261,7 +293,7 @@ export function addPlayer(room, { id, pseudo, isGuest = false }) {
 
   return {
     ...room,
-    players: [...room.players, { id, pseudo, score: 0, status: 'active', isGuest: Boolean(isGuest) }],
+    players: [...room.players, { id, pseudo, score: 0, status: 'active', isGuest: Boolean(isGuest), carteJoker: null }],
   };
 }
 
@@ -286,7 +318,9 @@ export function restartRoom(room) {
   return {
     ...room,
     status: 'waiting',
-    players: room.players.filter((p) => p.status !== 'left').map((p) => ({ ...p, score: 0 })),
+    // Une revanche est une partie neuve : le joker choisi ne survit pas plus
+    // que le score (Phase 3 fera choisir à nouveau avant le lancement).
+    players: room.players.filter((p) => p.status !== 'left').map((p) => ({ ...p, score: 0, carteJoker: null })),
     turnOrder: [],
     currentTurnIndex: -1,
     turnNumber: 0,

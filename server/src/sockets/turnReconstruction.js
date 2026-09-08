@@ -45,13 +45,20 @@ export function buildHistoryFromRows(historyRows, votesRows, surpriseRows) {
       doubleOuRien: Boolean(row.double_ou_rien),
       returned: row.returned_from_player_id != null,
       refused: row.status === 'done' && row.reponse == null,
-      // Détail de révélation (pari mutuel, contrainte de joker, bluff) jamais
+      // Détail de révélation (pari mutuel, contrainte de joker) jamais
       // persisté sous forme structurée — seul son effet sur les scores l'est
-      // (même compromis assumé que pour le tour en cours, voir plus bas).
+      // (compromis assumé, ces champs ne servent qu'à l'affichage temps réel
+      // au moment de la résolution, jamais rejoués depuis l'historique).
       pariMutuel: null,
       jokerConstraint: null,
       jokerInverse: Boolean(row.joker_inverse),
-      bluffAssume: null,
+      // bluffAssume.declared, lui, doit survivre à une reconnexion : Le
+      // fidèle (jokers.js) en dépend pour savoir si un tour passé était
+      // "sincère", bien après sa résolution — seul ce booléen est
+      // reconstruit, jamais fooled/voterResults/miseResults (uniquement
+      // utiles à l'affichage immédiat de la révélation, jamais relus depuis
+      // l'historique ailleurs dans l'app, vérifié avant ce correctif).
+      bluffAssume: row.bluff_declare ? { declared: true } : null,
     };
   });
 }
