@@ -30,6 +30,10 @@
   --color-joker-regularite-soft: rgba(155, 140, 251, 0.15);
   --color-joker-regularite-wash: rgba(155, 140, 251, 0.08);
 
+  --color-joker-bluffEtJugement: #e879f9;
+  --color-joker-bluffEtJugement-soft: rgba(232, 121, 249, 0.15);
+  --color-joker-bluffEtJugement-wash: rgba(232, 121, 249, 0.08);
+
   --color-overlay: rgba(0, 0, 0, 0.5);
   --color-spinner-track: rgba(244, 244, 246, 0.25);
 
@@ -99,6 +103,10 @@
   --color-joker-regularite: #4338ca;
   --color-joker-regularite-soft: #e6e1fd;
   --color-joker-regularite-wash: #f3f0fe;
+
+  --color-joker-bluffEtJugement: #a21caf;
+  --color-joker-bluffEtJugement-soft: #f8def8;
+  --color-joker-bluffEtJugement-wash: #fdf0fd;
 
   --color-overlay: rgba(23, 20, 15, 0.4);
   --color-spinner-track: rgba(23, 20, 15, 0.15);

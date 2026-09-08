@@ -3,6 +3,23 @@ import assert from 'node:assert/strict';
 import { createRoom, addPlayer } from '../game/room.js';
 import { startGame, submitAnswer, submitVote, activateJokerPublic, returnQuestion, declareBluff } from '../game/turn.js';
 import { buildHistoryFromRows, buildCurrentNormalTurnFromRow } from './turnReconstruction.js';
+import { hasUsedMasque, limierBonusDueForNextOpportunity, sceptiquePerpetuelVoteCount } from '../game/jokers.js';
+
+function createSequenceRngForBluff(values) {
+  let i = 0;
+  return () => {
+    if (i >= values.length) throw new Error('Séquence rng épuisée');
+    return values[i++];
+  };
+}
+function bluffPool() {
+  return {
+    verite: { top: ['v0', 'v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7'], lower: [] },
+    action: { top: ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7'], lower: [] },
+    escalade: { verite: [], action: [] },
+  };
+}
+const BLUFF_TURN_RNG = [0.1, 0.5, 0.0]; // type, panier (ignoré), index
 
 // Ids numériques (chaînes) plutôt que 'p1'/'p2' comme dans turn.test.js : ici
 // on simule des lignes de base réelles, où player_id/voter_id sont toujours
@@ -257,6 +274,150 @@ describe('buildCurrentNormalTurnFromRow : reconstruction du tour en cours (bluff
       () => declareBluff(afterReconnect, { playerId: '101' }),
       (err) => err.code === 'BLUFF_DEJA_DECLARE',
       'même avec bluffDeclared=false, le joueur ne doit pas regagner la main après une reconnexion'
+    );
+  });
+});
+
+// Trouvé en construisant Le masque et Le limier (jokers.js, catégorie Bluff
+// et jugement) : les deux dépendaient initialement de bluffAssume.voterResults
+// pour savoir qui avait deviné juste — un champ qui n'existe qu'en mémoire,
+// jamais reconstruit (voir buildHistoryFromRows ci-dessus, seul .declared
+// survit). Corrigé en redérivant tout depuis `votes` (lui bien reconstruit) :
+// ces tests le prouvent en comparant le résultat sur l'historique réel à
+// celui obtenu après un vrai aller-retour par des lignes de base simulées.
+describe('Le masque, Le limier et Le sceptique perpétuel : les mêmes garanties de reconnexion que room.history', () => {
+  function toFakeTurnRow(entry, id) {
+    return {
+      id,
+      numero: entry.turnNumber,
+      player_id: Number(entry.playerId),
+      question_id: entry.questionId,
+      type: entry.type,
+      reponse: entry.answer,
+      points: entry.points,
+      status: 'done',
+      double_ou_rien: Boolean(entry.doubleOuRien),
+      returned_from_player_id: null,
+      joker_inverse: false,
+      bluff_declare: Boolean(entry.bluffAssume?.declared),
+    };
+  }
+  function toFakeVotesRows(entry, turnId) {
+    return Object.entries(entry.votes ?? {}).map(([voterId, vote]) => ({
+      turn_id: turnId,
+      voter_id: Number(voterId),
+      valeur: vote === 'up' ? 1 : -1,
+    }));
+  }
+
+  test('hasUsedMasque donne le même résultat avant et après reconstruction', () => {
+    let room = createRoom({ code: 'ABCD', hostId: '101', hostPseudo: 'A', maxTurns: 2, regles: { bluffAssume: true } });
+    room = addPlayer(room, { id: '102', pseudo: 'B' });
+    room = addPlayer(room, { id: '103', pseudo: 'C' });
+    let cur = startGame(room, { questionPool: bluffPool(), rng: createSequenceRngForBluff(BLUFF_TURN_RNG) });
+
+    cur = submitAnswer(cur.room, { playerId: '101', text: 'menteur' });
+    cur = declareBluff(cur.room, { playerId: '101' });
+    cur = submitVote(cur.room, { voterId: '102', vote: 'up', turnNumber: 1 });
+    cur = submitVote(cur.room, { voterId: '103', vote: 'up', turnNumber: 1, rng: createSequenceRngForBluff(BLUFF_TURN_RNG) });
+
+    const liveEntry = cur.room.history[0];
+    assert.equal(hasUsedMasque(cur.room.history, '101'), true, 'vérité de référence : majorité dupée en direct');
+
+    const fakeRow = toFakeTurnRow(liveEntry, 901);
+    const fakeVotes = toFakeVotesRows(liveEntry, 901);
+    const reconstructed = buildHistoryFromRows([fakeRow], fakeVotes, []);
+
+    assert.equal(
+      hasUsedMasque(reconstructed, '101'),
+      true,
+      'doit rester vrai après reconstruction, sinon Le masque se redéclencherait après une reconnexion'
+    );
+  });
+
+  test('limierBonusDueForNextOpportunity donne le même résultat avant et après reconstruction', () => {
+    let room = createRoom({ code: 'ABCD', hostId: '101', hostPseudo: 'A', maxTurns: 4, regles: { bluffAssume: true } });
+    room = addPlayer(room, { id: '102', pseudo: 'B' });
+    room = addPlayer(room, { id: '103', pseudo: 'C' });
+    let cur = startGame(room, { questionPool: bluffPool(), rng: createSequenceRngForBluff(BLUFF_TURN_RNG) });
+
+    // Tour 1 (101 actif) : ment, 103 vote juste (down).
+    cur = submitAnswer(cur.room, { playerId: '101', text: 't1' });
+    cur = declareBluff(cur.room, { playerId: '101' });
+    cur = submitVote(cur.room, { voterId: '102', vote: 'down', turnNumber: 1 });
+    cur = submitVote(cur.room, { voterId: '103', vote: 'down', turnNumber: 1, rng: createSequenceRngForBluff(BLUFF_TURN_RNG) });
+
+    // Tour 2 (102 actif) : ment, 103 vote juste une 2e fois.
+    cur = submitAnswer(cur.room, { playerId: '102', text: 't2' });
+    cur = declareBluff(cur.room, { playerId: '102' });
+    cur = submitVote(cur.room, { voterId: '101', vote: 'down', turnNumber: 2 });
+    cur = submitVote(cur.room, { voterId: '103', vote: 'down', turnNumber: 2, rng: createSequenceRngForBluff(BLUFF_TURN_RNG) });
+
+    // Tour 3 (103 actif lui-même) : sans bluff, neutre pour sa propre série.
+    cur = submitAnswer(cur.room, { playerId: '103', text: 't3' });
+    cur = submitVote(cur.room, { voterId: '101', vote: 'up', turnNumber: 3 });
+    cur = submitVote(cur.room, { voterId: '102', vote: 'up', turnNumber: 3, rng: createSequenceRngForBluff(BLUFF_TURN_RNG) });
+
+    // Tour 4 (101 actif) : ment, 103 vote juste une 3e fois — série complète.
+    cur = submitAnswer(cur.room, { playerId: '101', text: 't4' });
+    cur = declareBluff(cur.room, { playerId: '101' });
+    cur = submitVote(cur.room, { voterId: '102', vote: 'down', turnNumber: 4 });
+    cur = submitVote(cur.room, { voterId: '103', vote: 'down', turnNumber: 4 });
+
+    assert.equal(
+      limierBonusDueForNextOpportunity(cur.room.history, '103'),
+      true,
+      'vérité de référence : 3 votes justes d’affilée en direct, bonus en attente'
+    );
+
+    const fakeRows = cur.room.history.map((entry, i) => toFakeTurnRow(entry, 900 + i));
+    const fakeVotes = cur.room.history.flatMap((entry, i) => toFakeVotesRows(entry, 900 + i));
+    const reconstructed = buildHistoryFromRows(fakeRows, fakeVotes, []);
+
+    assert.equal(
+      limierBonusDueForNextOpportunity(reconstructed, '103'),
+      true,
+      'doit rester vrai après reconstruction, sinon le bonus en attente de Le limier serait perdu à la reconnexion'
+    );
+  });
+
+  test('sceptiquePerpetuelVoteCount donne le même résultat avant et après reconstruction', () => {
+    let room = createRoom({ code: 'ABCD', hostId: '101', hostPseudo: 'A', maxTurns: 3, regles: { bluffAssume: true } });
+    room = addPlayer(room, { id: '102', pseudo: 'B' });
+    room = addPlayer(room, { id: '103', pseudo: 'C' });
+    let cur = startGame(room, { questionPool: bluffPool(), rng: createSequenceRngForBluff(BLUFF_TURN_RNG) });
+
+    // Tour 1 (101 actif) : ment, 103 vote juste (down).
+    cur = submitAnswer(cur.room, { playerId: '101', text: 't1' });
+    cur = declareBluff(cur.room, { playerId: '101' });
+    cur = submitVote(cur.room, { voterId: '102', vote: 'down', turnNumber: 1 });
+    cur = submitVote(cur.room, { voterId: '103', vote: 'down', turnNumber: 1, rng: createSequenceRngForBluff(BLUFF_TURN_RNG) });
+
+    // Tour 2 (102 actif) : ment, 103 vote juste une 2e fois.
+    cur = submitAnswer(cur.room, { playerId: '102', text: 't2' });
+    cur = declareBluff(cur.room, { playerId: '102' });
+    cur = submitVote(cur.room, { voterId: '101', vote: 'down', turnNumber: 2 });
+    cur = submitVote(cur.room, { voterId: '103', vote: 'down', turnNumber: 2, rng: createSequenceRngForBluff(BLUFF_TURN_RNG) });
+
+    // Tour 3 (103 actif lui-même) : sans bluff, neutre pour son propre compte.
+    cur = submitAnswer(cur.room, { playerId: '103', text: 't3' });
+    cur = submitVote(cur.room, { voterId: '101', vote: 'up', turnNumber: 3 });
+    cur = submitVote(cur.room, { voterId: '102', vote: 'up', turnNumber: 3 });
+
+    assert.equal(
+      sceptiquePerpetuelVoteCount(cur.room.history, '103'),
+      2,
+      'vérité de référence : 2 votes down éligibles en direct, son propre tour neutre'
+    );
+
+    const fakeRows = cur.room.history.map((entry, i) => toFakeTurnRow(entry, 900 + i));
+    const fakeVotes = cur.room.history.flatMap((entry, i) => toFakeVotesRows(entry, 900 + i));
+    const reconstructed = buildHistoryFromRows(fakeRows, fakeVotes, []);
+
+    assert.equal(
+      sceptiquePerpetuelVoteCount(reconstructed, '103'),
+      2,
+      'doit rester identique après reconstruction, sinon le compte de Le sceptique perpétuel serait faussé à la reconnexion'
     );
   });
 });

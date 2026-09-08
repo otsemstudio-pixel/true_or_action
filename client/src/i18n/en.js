@@ -68,6 +68,7 @@ export default {
     enAttenteDeChoix: 'Has not chosen yet',
     categories: {
       regularite: 'Regularity',
+      bluffEtJugement: 'Bluff and judgment',
     },
     regularite: {
       leFidele: {
@@ -89,6 +90,28 @@ export default {
       leRituel: {
         nom: 'The ritual',
         effet: 'Three surprise turns where you answer first: +1 point, then it resets.',
+      },
+    },
+    bluffEtJugement: {
+      leParieur: {
+        nom: 'The gambler',
+        effet: 'On your secret bets on others’ bluffs: double the gain on a correct bet, double the loss otherwise.',
+      },
+      leSemeurDeDoute: {
+        nom: 'The doubt-sower',
+        effet: 'Guessing right on the public authenticity vote earns +1 point on top of the normal gain.',
+      },
+      leMasque: {
+        nom: 'The mask',
+        effet: 'The first time you lie and fool the majority, your already-doubled gain is doubled again.',
+      },
+      leLimier: {
+        nom: 'The bloodhound',
+        effet: 'Three correct authenticity votes on others in a row: the 4th is automatically counted right, even without voting.',
+      },
+      leSceptiquePerpetuel: {
+        nom: 'The perpetual skeptic',
+        effet: 'If you always vote "I don\'t buy it" on others\' bluff turns, never trusting even once: +3 points per vote in the streak at the end of the game (minimum 3 votes, a single slip breaks it for good).',
       },
     },
   },

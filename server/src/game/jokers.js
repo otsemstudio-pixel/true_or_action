@@ -1,8 +1,8 @@
-// Effets des jokers, catégorie Régularité (5 des 50 à venir, voir le prompt
-// d'architecture). Fonctions pures, appelées depuis turn.js au moment de
-// résoudre un tour — aucune ne connaît la structure d'un salon au-delà de
-// `history` et `players`, pour rester testable sans dépendre du reste du
-// moteur de jeu.
+// Effets des jokers, catégories Régularité et Bluff et jugement (10 des 50
+// à venir, voir le prompt d'architecture). Fonctions pures, appelées depuis
+// turn.js au moment de résoudre un tour — aucune ne connaît la structure
+// d'un salon au-delà de `history` et `players`, pour rester testable sans
+// dépendre du reste du moteur de jeu.
 //
 // Choix délibéré : aucun compteur n'est stocké séparément dans l'état de la
 // partie — chaque jauge se recalcule à la demande à partir de `room.history`
@@ -20,6 +20,15 @@ export const JOKER_IDS = {
   LINCREVABLE: 'lIncrevable',
   LE_VETERAN: 'leVeteran',
   LE_RITUEL: 'leRituel',
+  // Catégorie Bluff et jugement (règle G, "le bluff assumé") : voir le
+  // préalable du prompt — bluffDeclared est un booléen auto-déclaré par le
+  // joueur actif, jamais vérifié contre une vérité de fond. "Deviner juste"
+  // ne signifie donc jamais rien de plus que "concorder avec bluffDeclared".
+  LE_PARIEUR: 'leParieur',
+  LE_SEMEUR_DE_DOUTE: 'leSemeurDeDoute',
+  LE_MASQUE: 'leMasque',
+  LE_LIMIER: 'leLimier',
+  LE_SCEPTIQUE_PERPETUEL: 'leSceptiquePerpetuel',
 };
 
 // ---------- Le fidèle ----------
@@ -107,4 +116,94 @@ export function rituelStreakBefore(history, playerId) {
     }
   }
   return streak;
+}
+
+// ---------- Le masque ----------
+// Pas de marqueur dédié (contrairement à `increvableUsed`) : `bluffAssume`
+// n'est PAS reconstruit en détail après une reconnexion (voir
+// turnReconstruction.js — seul `.declared` survit, par choix assumé, les
+// détails de révélation ne servent qu'à l'affichage temps réel). Un
+// marqueur `masqueUsed` serait donc perdu à la moindre reconnexion et
+// laisserait Le masque se redéclencher. À la place, on redérive
+// "majorité dupée" depuis `votes` (lui bien reconstruit) : comme un joueur
+// garde le même joker toute la partie, "j'ai déjà eu un tour où la majorité
+// a été dupée" équivaut exactement à "Le masque s'est déjà déclenché" —
+// tout tour majoritairement dupé AVANT le premier était par définition
+// impossible tant que Le masque n'avait pas encore tranché une fois.
+export function hasUsedMasque(history, playerId) {
+  return history.some((entry) => {
+    if (entry.playerId !== playerId || entry.mode !== 'normal' || entry.answer == null) return false;
+    if (!entry.bluffAssume?.declared) return false;
+    const votes = Object.values(entry.votes ?? {});
+    const fooledCount = votes.filter((v) => v === 'up').length;
+    return votes.length > 0 && fooledCount > votes.length / 2;
+  });
+}
+
+// ---------- Le limier ----------
+// Même contrainte de reconstruction que Le masque ci-dessus : `voterResults`
+// n'existe qu'en mémoire, jamais reconstruit. On relit donc directement
+// `entry.votes[playerId]` (lui fiable après reconnexion) et on le
+// réinterprète nous-mêmes exactement comme le fait resolveTurn en direct
+// ("down" = a deviné juste, puisque bluffActive est vrai ici par construction).
+//
+// Suit les OPPORTUNITÉS de vote d'authenticité (tout tour où bluffActive est
+// vrai — le seul contexte où un vote peut être jugé, voir le préalable),
+// qu'il ait réellement voté ou non sur chacune. Son PROPRE tour n'en est
+// jamais une (personne ne vote sur son propre bluff, voir submitVote) : il
+// est totalement ignoré, ni pour la série ni pour la consommation d'un bonus
+// déjà acquis — sinon un porteur qui ment sur son propre tour perdrait son
+// bonus en attente sans jamais avoir eu l'occasion de voter dessus. Un tour
+// d'un AUTRE joueur où il n'a pas voté, en revanche, est neutre pour la
+// série (ni pour ni contre, même logique que le refus pour Le fidèle) — mais
+// consomme quand même un bonus déjà acquis, puisque le prompt demande
+// explicitement que le 4e vote soit crédité automatiquement SANS qu'il ait
+// besoin de voter ce tour-là.
+export function limierBonusDueForNextOpportunity(history, playerId) {
+  let streak = 0;
+  let pending = false;
+  for (const entry of history) {
+    if (entry.mode !== 'normal' || entry.playerId === playerId || !entry.bluffAssume?.declared) continue;
+    pending = false;
+    const vote = entry.votes?.[playerId];
+    if (vote == null) continue;
+    const guessedRight = vote === 'down';
+    if (guessedRight) {
+      streak += 1;
+      if (streak === 3) {
+        streak = 0;
+        pending = true;
+      }
+    } else {
+      streak = 0;
+    }
+  }
+  return pending;
+}
+
+// ---------- Le sceptique perpétuel ----------
+// Contrairement aux neuf autres jokers, celui-ci ne se règle jamais tour par
+// tour : c'est un invariant sur LA PARTIE ENTIÈRE, vérifié une seule fois à
+// la fin (voir turn.js, aux 4 points d'émission de GAME_ENDED). Pas de palier
+// ni de remise à zéro comme Le limier — un seul "up" jamais rattrapable
+// disqualifie le joueur pour le reste de la partie, donc pour la partie
+// entière une fois relu depuis le début. Retourne `null` si disqualifié
+// (au moins un "up" rencontré), sinon le nombre de votes "down" éligibles
+// (le seuil minimum de 3 et la conversion en points restent à la charge de
+// l'appelant, voir REGLES.sceptiquePerpetuelVotesMinimum/PointsParVote).
+//
+// Mêmes tours neutres que Le limier et pour la même raison : son propre tour
+// de bluff (jamais votable par lui-même) et tout tour où il n'a pas voté du
+// tout (déconnecté, minuteur expiré) — ni progression ni rupture dans les
+// deux cas, seul un "up" effectivement posé rompt la série.
+export function sceptiquePerpetuelVoteCount(history, playerId) {
+  let count = 0;
+  for (const entry of history) {
+    if (entry.mode !== 'normal' || entry.playerId === playerId || !entry.bluffAssume?.declared) continue;
+    const vote = entry.votes?.[playerId];
+    if (vote == null) continue;
+    if (vote === 'up') return null;
+    count += 1;
+  }
+  return count;
 }

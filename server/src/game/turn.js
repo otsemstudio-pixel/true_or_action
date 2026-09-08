@@ -19,6 +19,9 @@ import {
   hasUsedIncrevable,
   applyVeteranBonus,
   rituelStreakBefore,
+  hasUsedMasque,
+  limierBonusDueForNextOpportunity,
+  sceptiquePerpetuelVoteCount,
 } from './jokers.js';
 
 const TOP_NIVEAU_WEIGHT = 0.6;
@@ -337,7 +340,7 @@ export function submitPass(room, { playerId, rng = defaultRng }) {
 
   const endReason = checkGameEnd(room2);
   if (endReason) {
-    const finished = { ...room2, status: 'finished', currentTurn: null };
+    const finished = applySceptiquePerpetuelBonuses({ ...room2, status: 'finished', currentTurn: null });
     return { room: finished, effects: [...effects, { type: 'GAME_ENDED', reason: endReason, ranking: buildRanking(finished) }] };
   }
 
@@ -817,7 +820,7 @@ function resolveSurpriseTurn(room, rng) {
 
   const endReason = checkGameEnd(room2);
   if (endReason) {
-    const finished = { ...room2, status: 'finished', currentTurn: null };
+    const finished = applySceptiquePerpetuelBonuses({ ...room2, status: 'finished', currentTurn: null });
     return { room: finished, effects: [...effects, { type: 'GAME_ENDED', reason: endReason, ranking: buildRanking(finished) }] };
   }
 
@@ -1218,6 +1221,20 @@ function resolveTurn(room, rng, { pariMutuelVerdict = null } = {}) {
   // misé "à l'aveugle" (ils ne savent jamais à l'avance si ce tour est le
   // bon) méritent une réponse explicite plutôt qu'un silence qui pourrait
   // laisser croire à un bug.
+  // Jokers, catégorie Bluff et jugement (voir jokers.js et le préalable du
+  // prompt) : Le limier se déclenche pour d'AUTRES joueurs que l'actif, sur
+  // l'historique d'AVANT ce tour — calculé ici, avant que ce tour n'y soit
+  // ajouté, jamais à partir d'un vote réellement soumis ce tour-ci.
+  const limierBonuses = {};
+  if (regles.bluffAssume && bluffActive) {
+    for (const p of room.players) {
+      if (p.id === turn.activePlayerId || p.carteJoker !== JOKER_IDS.LE_LIMIER) continue;
+      if (limierBonusDueForNextOpportunity(room.history, p.id)) {
+        limierBonuses[p.id] = (limierBonuses[p.id] ?? 0) + REGLES.bluffVoteCorrectPoints;
+      }
+    }
+  }
+
   let bluffResult = null;
   if (regles.bluffAssume) {
     const voteEntries = Object.entries(turn.votes);
@@ -1229,6 +1246,16 @@ function resolveTurn(room, rng, { pariMutuelVerdict = null } = {}) {
       const majorityFooled = totalVotes > 0 && fooledCount > totalVotes / 2;
       if (majorityFooled && turn.answer !== null) {
         points *= REGLES.bluffLiarMultiplicateur;
+        // Le masque (voir jokers.js) : une fois par partie, redouble encore
+        // ce gain déjà doublé ci-dessus — x4 au total par rapport à un tour
+        // normal, jamais différé, jamais reproduit une seconde fois.
+        const activePlayerForMasque = getPlayer(room, turn.activePlayerId);
+        if (
+          activePlayerForMasque?.carteJoker === JOKER_IDS.LE_MASQUE &&
+          !hasUsedMasque(room.history, turn.activePlayerId)
+        ) {
+          points *= REGLES.bluffLiarMultiplicateur;
+        }
       }
       bluffResult = {
         declared: true,
@@ -1238,12 +1265,20 @@ function resolveTurn(room, rng, { pariMutuelVerdict = null } = {}) {
         // menti par construction de declareBluff.
         voterResults: voteEntries.map(([voterId, vote]) => {
           const guessedRight = vote === 'down';
-          return { voterId, guessedRight, points: guessedRight ? REGLES.bluffVoteCorrectPoints : 0 };
+          // Le semeur de doute (voir jokers.js) : +1 en plus du gain normal
+          // d'un vote juste, pour ce votant seulement s'il porte ce joker.
+          const semeurBonus =
+            guessedRight && getPlayer(room, voterId)?.carteJoker === JOKER_IDS.LE_SEMEUR_DE_DOUTE ? 1 : 0;
+          return { voterId, guessedRight, points: (guessedRight ? REGLES.bluffVoteCorrectPoints : 0) + semeurBonus };
         }),
         // "faux" = le miseur pense qu'il a menti = devine juste.
         miseResults: miseEntries.map(([voterId, mise]) => {
           const guessedRight = mise.prediction === 'faux';
-          const delta = guessedRight ? mise.montant : -mise.montant;
+          // Le parieur (voir jokers.js) : double le gain ET la perte pour ce
+          // miseur seulement, jamais sur ses propres bluffs — impossible de
+          // toute façon, submitBluffMise interdit de miser sur soi-même.
+          const multiplicateur = getPlayer(room, voterId)?.carteJoker === JOKER_IDS.LE_PARIEUR ? 2 : 1;
+          const delta = (guessedRight ? mise.montant : -mise.montant) * multiplicateur;
           return { voterId, montant: mise.montant, prediction: mise.prediction, guessedRight, delta };
         }),
       };
@@ -1289,7 +1324,7 @@ function resolveTurn(room, rng, { pariMutuelVerdict = null } = {}) {
   );
 
   if (bluffResult) {
-    const deltasByPlayer = {};
+    const deltasByPlayer = { ...limierBonuses };
     for (const r of bluffResult.voterResults) {
       deltasByPlayer[r.voterId] = (deltasByPlayer[r.voterId] ?? 0) + r.points;
     }
@@ -1350,7 +1385,7 @@ function resolveTurn(room, rng, { pariMutuelVerdict = null } = {}) {
 
   const endReason = checkGameEnd(room2);
   if (endReason) {
-    room2 = { ...room2, status: 'finished', currentTurn: null };
+    room2 = applySceptiquePerpetuelBonuses({ ...room2, status: 'finished', currentTurn: null });
     return {
       room: room2,
       effects: [...effects, { type: 'GAME_ENDED', reason: endReason, ranking: buildRanking(room2) }],
@@ -1374,6 +1409,20 @@ function buildRanking(room) {
     .map((p) => ({ playerId: p.id, score: p.score }));
 }
 
+// Le sceptique perpétuel : seul joker réglé une fois pour toutes en fin de
+// partie plutôt que tour par tour — appliqué juste avant buildRanking, aux
+// 4 points où GAME_ENDED est émis (maxTurns, targetScore, refus forcé,
+// notEnoughPlayers), pour qu'aucune sortie de partie ne l'oublie.
+function applySceptiquePerpetuelBonuses(room) {
+  const players = room.players.map((p) => {
+    if (p.carteJoker !== JOKER_IDS.LE_SCEPTIQUE_PERPETUEL) return p;
+    const count = sceptiquePerpetuelVoteCount(room.history, p.id);
+    if (count === null || count < REGLES.sceptiquePerpetuelVotesMinimum) return p;
+    return { ...p, score: p.score + count * REGLES.sceptiquePerpetuelPointsParVote };
+  });
+  return { ...room, players };
+}
+
 // Exclut un joueur (fin de grâce après déconnexion). S'il n'en reste plus
 // qu'un seul en partie, celle-ci se termine immédiatement avec le classement
 // en l'état — jouer seul n'a pas de sens. Les timers de tour en cours (s'il y
@@ -1386,7 +1435,7 @@ export function handlePlayerLeft(room, playerId) {
   }
 
   if (updatedRoom.turnOrder.length <= 1) {
-    const finished = { ...updatedRoom, status: 'finished', currentTurn: null };
+    const finished = applySceptiquePerpetuelBonuses({ ...updatedRoom, status: 'finished', currentTurn: null });
     return {
       room: finished,
       effects: [

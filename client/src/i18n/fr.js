@@ -68,6 +68,7 @@ export default {
     enAttenteDeChoix: "N'a pas encore choisi",
     categories: {
       regularite: 'Régularité',
+      bluffEtJugement: 'Bluff et jugement',
     },
     regularite: {
       leFidele: {
@@ -89,6 +90,28 @@ export default {
       leRituel: {
         nom: 'Le rituel',
         effet: 'Trois tours surprise où vous répondez le premier : +1 point, puis on repart de zéro.',
+      },
+    },
+    bluffEtJugement: {
+      leParieur: {
+        nom: 'Le parieur',
+        effet: 'Sur vos mises secrètes sur le bluff des autres : le double du gain en cas de mise juste, le double de la perte sinon.',
+      },
+      leSemeurDeDoute: {
+        nom: 'Le semeur de doute',
+        effet: 'Deviner juste sur le vote public d’authenticité rapporte +1 point en plus du gain normal.',
+      },
+      leMasque: {
+        nom: 'Le masque',
+        effet: 'La première fois que vous mentez et dupez la majorité, votre gain déjà doublé est encore doublé.',
+      },
+      leLimier: {
+        nom: 'Le limier',
+        effet: 'Trois votes d’authenticité justes d’affilée sur les autres : le 4e est automatiquement compté juste, même sans voter.',
+      },
+      leSceptiquePerpetuel: {
+        nom: 'Le sceptique perpétuel',
+        effet: 'Si vous votez toujours "je n’y crois pas" sur les tours de bluff des autres, sans jamais faire confiance une seule fois : +3 points par vote de la série en fin de partie (minimum 3 votes, un seul faux pas la rompt définitivement).',
       },
     },
   },

@@ -56,6 +56,11 @@ export const REGLES = {
   // ailleurs, pour ne pas inventer une échelle séparée.
   bluffVoteCorrectPoints: 2,
   bluffLiarMultiplicateur: 2,
+  // Le sceptique perpétuel : bonus de fin de partie, un peu au-dessus de
+  // bluffVoteCorrectPoints puisqu'il récompense une perfection tenue sur
+  // toute la partie plutôt qu'une devinette isolée, sans rattrapage possible.
+  sceptiquePerpetuelPointsParVote: 3,
+  sceptiquePerpetuelVotesMinimum: 3,
 };
 
 // Règle G : montants de mise autorisés sur la sincérité du joueur actif.
